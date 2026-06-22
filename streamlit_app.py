@@ -892,7 +892,7 @@ with tab_builder:
     updated_state = streamlit_flow(
         "regelkreis_builder",
         st.session_state.flow_state,
-        fit_view=True,
+        fit_view=False,
         show_minimap=True,
         show_controls=True,
         allow_new_edges=True,
