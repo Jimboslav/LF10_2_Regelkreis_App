@@ -408,7 +408,26 @@ st.caption(
 # Sidebar: Eingaben
 # ------------------------------------------------------------
 
+defaults = st.session_state.defaults
+
 with st.sidebar:
+    st.header("Auswahl aus dem Startformular")
+
+    st.info(
+        f"""
+        **Lernziel:** {st.session_state.lernziel}  
+        **Regler:** {st.session_state.controller_type}  
+        **Strecke:** {st.session_state.plant_type}  
+        **Störung:** {st.session_state.disturbance_position}  
+        **Modus:** {st.session_state.schwierigkeitsgrad}
+        """
+    )
+
+    if st.button("Startformular neu öffnen"):
+        st.session_state.app_started = False
+        st.rerun()
+
+    
     st.header("1. Regelkreis aufbauen")
 
     controller_type = st.selectbox(
@@ -429,34 +448,43 @@ with st.sidebar:
         index=0
     )
 
-    st.header("2. Reglerparameter")
+ st.header("2. Reglerparameter")
 
     kp = st.number_input(
         "Kp - Proportionalverstärkung",
         min_value=0.0,
         max_value=100.0,
-        value=2.0,
-        step=0.1
-    )
-
-    ki = st.number_input(
-        "Ki - Integralverstärkung",
-        min_value=0.0,
-        max_value=100.0,
-        value=0.5,
+        value=float(defaults["kp"]),
         step=0.1,
-        disabled=controller_type == "P"
+        help="Kp bestimmt, wie stark der Regler direkt auf die aktuelle Regelabweichung reagiert."
     )
 
-    kd = st.number_input(
-        "Kd - Differentialverstärkung",
-        min_value=0.0,
-        max_value=100.0,
-        value=0.0,
-        step=0.1,
-        disabled=controller_type != "PID"
-    )
+    if controller_type in ["PI", "PID"]:
+        ki = st.number_input(
+            "Ki - Integralverstärkung",
+            min_value=0.0,
+            max_value=100.0,
+            value=float(defaults["ki"]),
+            step=0.1,
+            help="Ki baut eine bleibende Regelabweichung über die Zeit ab."
+        )
+    else:
+        ki = 0.0
+        st.caption("Ki wird beim P-Regler automatisch auf 0 gesetzt.")
 
+    if controller_type == "PID":
+        kd = st.number_input(
+            "Kd - Differentialverstärkung",
+            min_value=0.0,
+            max_value=100.0,
+            value=float(defaults["kd"]),
+            step=0.1,
+            help="Kd reagiert auf schnelle Änderungen der Regelabweichung und kann Überschwingen dämpfen."
+        )
+    else:
+        kd = 0.0
+        st.caption("Kd ist nur beim PID-Regler relevant und wird automatisch auf 0 gesetzt.")
+        
     st.header("3. Streckenparameter")
 
     ks = st.number_input(
