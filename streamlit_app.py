@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from streamlit_flow import streamlit_flow
+from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
+from streamlit_flow.state import StreamlitFlowState
 
 # ------------------------------------------------------------
 # Seiteneinstellungen
@@ -722,15 +725,188 @@ for text in bewertung:
 
 
 # ------------------------------------------------------------
-# Regelkreis grafisch anzeigen
+# Regelkreis grafisch anzeigen / Baustein-Builder
 # ------------------------------------------------------------
 
-st.subheader("Vervollständigter Regelkreis")
-
-st.graphviz_chart(
-    blockdiagramm(controller_type, plant_type, disturbance_position),
-    use_container_width=True
+tab_auto, tab_builder = st.tabs(
+    [
+        "Automatischer Regelkreis",
+        "Baustein-Builder"
+    ]
 )
+
+with tab_auto:
+    st.subheader("Vervollständigter Regelkreis")
+
+    st.graphviz_chart(
+        blockdiagramm(controller_type, plant_type, disturbance_position),
+        use_container_width=True
+    )
+
+with tab_builder:
+    st.subheader("Regelkreis aus Bausteinen zusammensetzen")
+
+    st.info(
+        "Hier kannst du die Bausteine des Regelkreises verschieben und den Aufbau visuell nachvollziehen. "
+        "Die Simulation verwendet weiterhin die Parameter aus der Sidebar."
+    )
+
+    if "flow_state" not in st.session_state:
+        nodes = [
+            StreamlitFlowNode(
+                id="sollwert",
+                pos=(0, 150),
+                data={"content": "Sollwert<br>w(t)"},
+                node_type="input",
+                source_position="right",
+                draggable=True
+            ),
+            StreamlitFlowNode(
+                id="summe",
+                pos=(220, 150),
+                data={"content": "Σ<br>e(t)=w(t)-y(t)"},
+                node_type="default",
+                source_position="right",
+                target_position="left",
+                draggable=True
+            ),
+            StreamlitFlowNode(
+                id="regler",
+                pos=(460, 150),
+                data={"content": f"{controller_type}-Regler<br>u(t)"},
+                node_type="default",
+                source_position="right",
+                target_position="left",
+                draggable=True
+            ),
+            StreamlitFlowNode(
+                id="strecke",
+                pos=(720, 150),
+                data={"content": f"{plant_type}-Strecke<br>y(t)"},
+                node_type="default",
+                source_position="right",
+                target_position="left",
+                draggable=True
+            ),
+            StreamlitFlowNode(
+                id="ausgang",
+                pos=(980, 150),
+                data={"content": "Regelgröße<br>y(t)"},
+                node_type="output",
+                target_position="left",
+                draggable=True
+            ),
+            StreamlitFlowNode(
+                id="rueckfuehrung",
+                pos=(460, 350),
+                data={"content": "Rückführung<br>-y(t)"},
+                node_type="default",
+                source_position="left",
+                target_position="right",
+                draggable=True
+            ),
+        ]
+
+        edges = [
+            StreamlitFlowEdge(
+                id="e_soll_summe",
+                source="sollwert",
+                target="summe",
+                animated=True,
+                label="w(t)"
+            ),
+            StreamlitFlowEdge(
+                id="e_summe_regler",
+                source="summe",
+                target="regler",
+                animated=True,
+                label="e(t)"
+            ),
+            StreamlitFlowEdge(
+                id="e_regler_strecke",
+                source="regler",
+                target="strecke",
+                animated=True,
+                label="u(t)"
+            ),
+            StreamlitFlowEdge(
+                id="e_strecke_ausgang",
+                source="strecke",
+                target="ausgang",
+                animated=True,
+                label="y(t)"
+            ),
+            StreamlitFlowEdge(
+                id="e_ausgang_rueck",
+                source="ausgang",
+                target="rueckfuehrung",
+                animated=False,
+                label="Istwert"
+            ),
+            StreamlitFlowEdge(
+                id="e_rueck_summe",
+                source="rueckfuehrung",
+                target="summe",
+                animated=False,
+                label="-y(t)"
+            ),
+        ]
+
+        if disturbance_position != "Keine Störung":
+            nodes.append(
+                StreamlitFlowNode(
+                    id="stoerung",
+                    pos=(720, 20),
+                    data={"content": f"Störung<br>d(t)<br>{disturbance_position}"},
+                    node_type="default",
+                    source_position="bottom",
+                    target_position="top",
+                    draggable=True
+                )
+            )
+
+            if disturbance_position == "Vor der Strecke":
+                edges.append(
+                    StreamlitFlowEdge(
+                        id="e_stoerung_strecke",
+                        source="stoerung",
+                        target="strecke",
+                        animated=True,
+                        label="d(t)"
+                    )
+                )
+
+            elif disturbance_position == "Am Ausgang":
+                edges.append(
+                    StreamlitFlowEdge(
+                        id="e_stoerung_ausgang",
+                        source="stoerung",
+                        target="ausgang",
+                        animated=True,
+                        label="d(t)"
+                    )
+                )
+
+        st.session_state.flow_state = StreamlitFlowState(nodes, edges)
+
+    updated_state = streamlit_flow(
+        "regelkreis_builder",
+        st.session_state.flow_state,
+        fit_view=True,
+        show_minimap=True,
+        show_controls=True,
+        allow_new_edges=True,
+        animate_new_edges=True,
+        height=520
+    )
+
+    st.session_state.flow_state = updated_state
+
+    with st.expander("Aktuelle Baustein-Struktur anzeigen"):
+        st.write("Nodes:")
+        st.write(updated_state.nodes)
+        st.write("Verbindungen:")
+        st.write(updated_state.edges)
 
 
 # ------------------------------------------------------------
