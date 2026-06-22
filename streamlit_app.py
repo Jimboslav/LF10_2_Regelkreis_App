@@ -538,42 +538,51 @@ with st.sidebar:
 
     setpoint = st.number_input(
         "Sollwert w",
-        value=1.0,
-        step=0.1
+        value=float(defaults["setpoint"]),
+        step=0.1,
+        help="Der Sollwert ist die Führungsgröße, die die Regelgröße erreichen soll."
     )
 
     t_end = st.number_input(
         "Simulationsdauer [s]",
         min_value=1.0,
         max_value=200.0,
-        value=20.0,
+        value=float(defaults["t_end"]),
         step=1.0
     )
 
-    dt = st.number_input(
-        "Schrittweite dt [s]",
-        min_value=0.001,
-        max_value=1.0,
-        value=0.01,
-        step=0.001,
-        format="%.3f"
-    )
+    if st.session_state.schwierigkeitsgrad == "Experte":
+        dt = st.number_input(
+            "Schrittweite dt [s]",
+            min_value=0.001,
+            max_value=1.0,
+            value=float(defaults["dt"]),
+            step=0.001,
+            format="%.3f",
+            help="Kleinere Schrittweiten erhöhen die Genauigkeit, benötigen aber mehr Rechenpunkte."
+        )
+    else:
+        dt = defaults["dt"]
+        st.caption(f"Schrittweite dt wird automatisch auf {dt} s gesetzt.")
 
-    disturbance_time = st.number_input(
-        "Störung ab Zeitpunkt [s]",
-        min_value=0.0,
-        max_value=200.0,
-        value=8.0,
-        step=0.5,
-        disabled=disturbance_position == "Keine Störung"
-    )
+    if disturbance_position != "Keine Störung":
+        disturbance_time = st.number_input(
+            "Störung ab Zeitpunkt [s]",
+            min_value=0.0,
+            max_value=200.0,
+            value=float(defaults["disturbance_time"]),
+            step=0.5
+        )
 
-    disturbance_value = st.number_input(
-        "Störgröße d",
-        value=-0.3,
-        step=0.1,
-        disabled=disturbance_position == "Keine Störung"
-    )
+        disturbance_value = st.number_input(
+            "Störgröße d",
+            value=float(defaults["disturbance_value"]),
+            step=0.1
+        )
+    else:
+        disturbance_time = 0.0
+        disturbance_value = 0.0
+        st.caption("Keine Störung gewählt. Störzeitpunkt und Störgröße werden automatisch auf 0 gesetzt.")
 
 
 # ------------------------------------------------------------
