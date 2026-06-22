@@ -133,8 +133,29 @@ if not st.session_state.app_started:
                 "Grundverhalten verstehen",
                 "Störverhalten untersuchen",
                 "Regler optimieren"
-            ]
+            ],
+            help=(
+                "Das Lernziel legt fest, worauf die App den Schwerpunkt setzt: "
+                "Grundverhalten, Störverhalten oder gezielte Regleroptimierung."
+            )
         )
+
+        with st.expander("Hilfe: Was bedeuten die Lernziele?", expanded=False):
+            st.markdown(
+                """
+                **Grundverhalten verstehen**  
+                Die App zeigt das grundsätzliche Verhalten eines geschlossenen Regelkreises.  
+                Du erkennst, wie Sollwert, Regelgröße, Regeldifferenz, Regler, Strecke und Rückführung zusammenwirken.
+
+                **Störverhalten untersuchen**  
+                Die App legt den Schwerpunkt auf Störungen.  
+                Du kannst erkennen, wie der Regelkreis auf eine Störung reagiert und ob der Regler diese wieder ausregelt.
+
+                **Regler optimieren**  
+                Die App ist stärker auf Parametervergleich ausgelegt.  
+                Du kannst untersuchen, wie sich Kp, Ki und Kd auf Überschwingen, Einschwingzeit und bleibende Regelabweichung auswirken.
+                """
+            )
 
         st.subheader("2. Aufbau des Regelkreises")
 
@@ -169,8 +190,29 @@ if not st.session_state.app_started:
                 "Fortgeschritten",
                 "Experte"
             ],
-            horizontal=True
+            horizontal=True,
+            help=(
+                "Der Modus steuert, wie viele technische Einstellmöglichkeiten sichtbar sind "
+                "und welche Werte die App automatisch vorbelegt."
+            )
         )
+
+        with st.expander("Hilfe: Was bedeuten die Modi?", expanded=False):
+            st.markdown(
+                """
+                **Einsteiger**  
+                Die App übernimmt viele technische Werte automatisch.  
+                Geeignet, wenn du erstmal das Prinzip des Regelkreises verstehen möchtest.
+
+                **Fortgeschritten**  
+                Die App rechnet mit feineren Standardwerten und eignet sich besser zum Vergleichen von Regelverhalten.  
+                Die Bedienung bleibt aber weiterhin geführt.
+
+                **Experte**  
+                Du bekommst zusätzliche technische Einstellmöglichkeiten, zum Beispiel die Simulations-Schrittweite `dt`.  
+                Dieser Modus ist sinnvoll, wenn du gezielt Parameter untersuchen möchtest.
+                """
+            )
 
         submitted = st.form_submit_button("Regelkreis erstellen")
 
@@ -242,6 +284,54 @@ if "wirkplan_config" not in st.session_state:
         "bleibende_abweichung_erlaubt": "Nein",
         "stoerungen_relevant": "Ja",
     }
+
+
+# ------------------------------------------------------------
+# Obere Navigation
+# ------------------------------------------------------------
+
+def render_top_navigation():
+    """
+    Horizontale Arbeitsbereich-Navigation oberhalb der App.
+    """
+
+    with st.container(border=True):
+        col1, col2, col3, col4 = st.columns([1.2, 1.6, 1.7, 1.5])
+
+        with col1:
+            if st.button(
+                "Simulation",
+                width="stretch",
+                type="primary" if st.session_state.active_view == "simulation" else "secondary"
+            ):
+                st.session_state.active_view = "simulation"
+                st.rerun()
+
+        with col2:
+            if st.button(
+                "Physikalischer Wirkplan",
+                width="stretch",
+                type="primary" if st.session_state.active_view == "wirkplan" else "secondary"
+            ):
+                st.session_state.active_view = "wirkplan"
+                st.rerun()
+
+        with col3:
+            if st.button(
+                "Visueller Regelkreis-Builder",
+                width="stretch",
+                type="primary" if st.session_state.active_view == "builder" else "secondary"
+            ):
+                st.session_state.active_view = "builder"
+                st.rerun()
+
+        with col4:
+            if st.button(
+                "Startformular neu öffnen",
+                width="stretch"
+            ):
+                st.session_state.app_started = False
+                st.rerun()
 
 
 # ------------------------------------------------------------
@@ -789,10 +879,6 @@ def render_visual_builder():
             }
             st.rerun()
 
-        if st.button("Zurück zur Simulation ohne Übernahme"):
-            st.session_state.active_view = "simulation"
-            st.rerun()
-
     with col_right:
         st.subheader("Grafischer Aufbau")
 
@@ -1316,10 +1402,6 @@ def render_wirkplan_builder():
             st.session_state.active_view = "simulation"
             st.rerun()
 
-        if st.button("Zurück zur Simulation ohne Übernahme"):
-            st.session_state.active_view = "simulation"
-            st.rerun()
-
     with col_right:
         st.subheader("Grafischer Wirkplan")
 
@@ -1351,6 +1433,13 @@ def render_wirkplan_builder():
 
 
 # ------------------------------------------------------------
+# Obere Navigation anzeigen
+# ------------------------------------------------------------
+
+render_top_navigation()
+
+
+# ------------------------------------------------------------
 # Ansichten abfangen
 # ------------------------------------------------------------
 
@@ -1376,38 +1465,12 @@ st.caption(
 
 
 # ------------------------------------------------------------
-# Sidebar
+# Sidebar nur mit vier Optionsgruppen
 # ------------------------------------------------------------
 
 defaults = st.session_state.defaults
 
 with st.sidebar:
-
-    st.header("Arbeitsbereich")
-
-    if st.button("Physikalischen Wirkplan öffnen"):
-        st.session_state.active_view = "wirkplan"
-        st.rerun()
-
-    if st.button("Visuellen Regelkreis-Builder öffnen"):
-        st.session_state.active_view = "builder"
-        st.rerun()
-
-    if st.button("Startformular neu öffnen"):
-        st.session_state.app_started = False
-        st.rerun()
-
-    with st.expander("Auswahl aus dem Startformular", expanded=True):
-
-        st.info(
-            f"""
-            **Lernziel:** {st.session_state.lernziel}  
-            **Regler:** {st.session_state.controller_type}  
-            **Strecke:** {st.session_state.plant_type}  
-            **Störung:** {st.session_state.disturbance_position}  
-            **Modus:** {st.session_state.schwierigkeitsgrad}
-            """
-        )
 
     with st.expander("1. Regelkreis aufbauen", expanded=True):
 
