@@ -448,7 +448,7 @@ with st.sidebar:
         index=0
     )
 
- st.header("2. Reglerparameter")
+    st.header("2. Reglerparameter")
 
     kp = st.number_input(
         "Kp - Proportionalverstärkung",
