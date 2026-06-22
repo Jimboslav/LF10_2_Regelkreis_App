@@ -3,7 +3,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Regelkreis-Labor", layout="wide")
+
+# ------------------------------------------------------------
+# Seiteneinstellungen
+# ------------------------------------------------------------
+
+st.set_page_config(
+    page_title="Regelkreis-Labor",
+    layout="wide"
+)
+
 
 # ------------------------------------------------------------
 # Startformular / Regelkreis-Assistent
@@ -21,7 +30,6 @@ def get_default_parameters(
     Nicht relevante Werte werden trotzdem gesetzt, damit die Simulation stabil läuft.
     """
 
-    # Grundwerte
     defaults = {
         "kp": 2.0,
         "ki": 0.5,
@@ -56,11 +64,11 @@ def get_default_parameters(
     # Streckentypabhängige Standardwerte
     if plant_type == "PT1":
         defaults["ts"] = 2.0
-        defaults["zeta"] = 0.7       # nicht relevant, aber intern gefüllt
-        defaults["omega0"] = 2.0     # nicht relevant, aber intern gefüllt
+        defaults["zeta"] = 0.7
+        defaults["omega0"] = 2.0
 
     elif plant_type == "PT2":
-        defaults["ts"] = 2.0         # nicht relevant, aber intern gefüllt
+        defaults["ts"] = 2.0
         defaults["zeta"] = 0.6
         defaults["omega0"] = 2.0
 
@@ -85,6 +93,7 @@ def get_default_parameters(
     elif lernziel == "Störverhalten untersuchen":
         defaults["t_end"] = 30.0
         defaults["disturbance_time"] = 10.0
+
         if disturbance_position == "Keine Störung":
             defaults["disturbance_value"] = 0.0
         else:
@@ -117,7 +126,8 @@ if not st.session_state.app_started:
 
     st.markdown(
         """
-        Diese App unterstützt dich beim Aufbau und bei der Analyse eines geschlossenen Regelkreises.  
+        Diese App unterstützt dich beim Aufbau und bei der Analyse eines geschlossenen Regelkreises.
+
         Wähle zuerst aus, was du untersuchen möchtest. Danach erstellt die App automatisch einen passenden
         Regelkreis mit sinnvollen Startparametern.
         """
@@ -195,12 +205,16 @@ if not st.session_state.app_started:
 
     st.stop()
 
+
 # ------------------------------------------------------------
 # Hilfsfunktionen
 # ------------------------------------------------------------
 
 def blockdiagramm(controller_type: str, plant_type: str, disturbance_position: str) -> str:
-    """Erzeugt ein DOT-Diagramm für st.graphviz_chart."""
+    """
+    Erzeugt ein DOT-Diagramm für st.graphviz_chart.
+    """
+
     disturbance_label = "Störung d(t)"
 
     if disturbance_position == "Keine Störung":
@@ -209,24 +223,26 @@ def blockdiagramm(controller_type: str, plant_type: str, disturbance_position: s
         output_label = "strecke -> ausgang"
 
     elif disturbance_position == "Vor der Strecke":
-        disturbance_part = f'''
+        disturbance_part = f"""
         dist [label="{disturbance_label}", shape=ellipse, style=dashed];
-        summ2 [label="Σ", shape=circle];
+        summ2 [label="Σ", shape=circle, fillcolor="#FFFFFF"];
         regler -> summ2;
         dist -> summ2;
         summ2 -> strecke;
-        '''
+        """
+
         input_to_plant = ""
         output_label = "strecke -> ausgang"
 
     else:
-        disturbance_part = f'''
+        disturbance_part = f"""
         dist [label="{disturbance_label}", shape=ellipse, style=dashed];
-        summ3 [label="Σ", shape=circle];
+        summ3 [label="Σ", shape=circle, fillcolor="#FFFFFF"];
         strecke -> summ3;
         dist -> summ3;
         summ3 -> ausgang;
-        '''
+        """
+
         input_to_plant = "regler -> strecke"
         output_label = ""
 
@@ -271,10 +287,14 @@ def simulate_control_loop(
     disturbance_time: float,
     disturbance_value: float,
 ):
-    """Numerische Simulation eines geschlossenen Regelkreises.
+    """
+    Numerische Simulation eines geschlossenen Regelkreises.
 
-    PT1: T_s * dy/dt + y = K_s * u
-    PT2: y'' + 2*zeta*omega0*y' + omega0^2*y = K_s*omega0^2*u
+    PT1:
+    Ts * dy/dt + y = Ks * u
+
+    PT2:
+    y'' + 2*zeta*omega0*y' + omega0^2*y = Ks*omega0^2*u
     """
 
     t = np.arange(0.0, t_end + dt, dt)
@@ -367,7 +387,9 @@ def simulate_control_loop(
 
 
 def calculate_metrics(df: pd.DataFrame, setpoint: float):
-    """Berechnet einfache Kennwerte aus der Simulation."""
+    """
+    Berechnet einfache Kennwerte aus der Simulation.
+    """
 
     y = df["Regelgröße y"].to_numpy()
     t = df["Zeit [s]"].to_numpy()
@@ -393,7 +415,7 @@ def calculate_metrics(df: pd.DataFrame, setpoint: float):
 
 
 # ------------------------------------------------------------
-# Oberfläche
+# Oberfläche nach Startformular
 # ------------------------------------------------------------
 
 st.title("Regelkreis-Labor")
@@ -411,6 +433,7 @@ st.caption(
 defaults = st.session_state.defaults
 
 with st.sidebar:
+
     st.header("Auswahl aus dem Startformular")
 
     st.info(
@@ -427,25 +450,26 @@ with st.sidebar:
         st.session_state.app_started = False
         st.rerun()
 
-    
     st.header("1. Regelkreis aufbauen")
 
     controller_type = st.selectbox(
         "Reglertyp",
         ["P", "PI", "PID"],
-        index=1
+        index=["P", "PI", "PID"].index(st.session_state.controller_type)
     )
 
     plant_type = st.selectbox(
         "Streckentyp",
         ["PT1", "PT2"],
-        index=0
+        index=["PT1", "PT2"].index(st.session_state.plant_type)
     )
 
     disturbance_position = st.selectbox(
         "Störung platzieren",
         ["Keine Störung", "Vor der Strecke", "Am Ausgang"],
-        index=0
+        index=["Keine Störung", "Vor der Strecke", "Am Ausgang"].index(
+            st.session_state.disturbance_position
+        )
     )
 
     st.header("2. Reglerparameter")
@@ -484,7 +508,7 @@ with st.sidebar:
     else:
         kd = 0.0
         st.caption("Kd ist nur beim PID-Regler relevant und wird automatisch auf 0 gesetzt.")
-        
+
     st.header("3. Streckenparameter")
 
     ks = st.number_input(
@@ -530,10 +554,10 @@ with st.sidebar:
             help="ω0 beschreibt die Eigenkreisfrequenz der PT2-Strecke."
         )
 
-    ts = defaults["ts"]
+        ts = defaults["ts"]
 
-    st.caption("Ts ist für PT2 nicht relevant und wird automatisch intern gesetzt.")
-        
+        st.caption("Ts ist für PT2 nicht relevant und wird automatisch intern gesetzt.")
+
     st.header("4. Simulation")
 
     setpoint = st.number_input(
@@ -636,6 +660,16 @@ col1.metric("Endwert y", f"{final_value:.3f}")
 col2.metric("bleibende Abweichung", f"{steady_error:.3f}")
 col3.metric("Überschwingen", f"{overshoot:.1f} %")
 
+if settling_time is None:
+    col4.metric("Einschwingzeit", "nicht erreicht")
+else:
+    col4.metric("Einschwingzeit", f"{settling_time:.2f} s")
+
+
+# ------------------------------------------------------------
+# Automatische Auswertung
+# ------------------------------------------------------------
+
 st.subheader("Automatische Auswertung")
 
 bewertung = []
@@ -681,11 +715,6 @@ if disturbance_position != "Keine Störung":
 
 for text in bewertung:
     st.write("- " + text)
-
-if settling_time is None:
-    col4.metric("Einschwingzeit", "nicht erreicht")
-else:
-    col4.metric("Einschwingzeit", f"{settling_time:.2f} s")
 
 
 # ------------------------------------------------------------
@@ -760,7 +789,7 @@ with st.expander("Rohdaten anzeigen"):
 with st.expander("Technische Einordnung"):
     st.markdown(
         f"""
-        **Aktueller Aufbau:** {controller_type}-Regler mit {plant_type}-Strecke.  
+        **Aktueller Aufbau:** {controller_type}-Regler mit {plant_type}-Strecke.
 
         **Reglerprinzip:**  
         Die Regeldifferenz wird berechnet aus:
