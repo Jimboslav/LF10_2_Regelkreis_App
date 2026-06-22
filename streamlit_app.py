@@ -29,11 +29,6 @@ def get_default_parameters(
     disturbance_position: str,
     schwierigkeitsgrad: str
 ):
-    """
-    Erzeugt passende Startparameter abhängig von der Auswahl im Formular.
-    Nicht relevante Werte werden trotzdem gesetzt, damit die Simulation stabil läuft.
-    """
-
     defaults = {
         "kp": 2.0,
         "ki": 0.5,
@@ -78,11 +73,7 @@ def get_default_parameters(
         defaults["disturbance_time"] = 0.0
         defaults["disturbance_value"] = 0.0
 
-    elif disturbance_position == "Vor der Strecke":
-        defaults["disturbance_time"] = 8.0
-        defaults["disturbance_value"] = -0.3
-
-    elif disturbance_position == "Am Ausgang":
+    elif disturbance_position in ["Vor der Strecke", "Am Ausgang"]:
         defaults["disturbance_time"] = 8.0
         defaults["disturbance_value"] = -0.3
 
@@ -199,10 +190,12 @@ if not st.session_state.app_started:
         st.session_state.disturbance_position = disturbance_position
         st.session_state.schwierigkeitsgrad = schwierigkeitsgrad
         st.session_state.defaults = defaults
+
         st.session_state.builder_config = defaults.copy()
         st.session_state.builder_config["controller_type"] = controller_type
         st.session_state.builder_config["plant_type"] = plant_type
         st.session_state.builder_config["disturbance_position"] = disturbance_position
+
         st.session_state.active_view = "simulation"
 
         st.rerun()
@@ -211,7 +204,7 @@ if not st.session_state.app_started:
 
 
 # ------------------------------------------------------------
-# Grundzustände nach Startformular
+# Grundzustände
 # ------------------------------------------------------------
 
 if "active_view" not in st.session_state:
@@ -236,16 +229,26 @@ if "builder_config" not in st.session_state:
         "disturbance_value": -0.3,
     }
 
+if "wirkplan_config" not in st.session_state:
+    st.session_state.wirkplan_config = {
+        "prozessart": "Temperaturregelung",
+        "stellgroesse": "Heizleistung P [W]",
+        "prozessglied": "thermische Strecke / Raum",
+        "speicher": "thermische Masse",
+        "regelgroesse": "Temperatur T [°C]",
+        "stoergroesse": "Außentemperatur / Fremdwärme",
+        "traegheit": "träge",
+        "ueberschwingen_zulaessig": "Nein",
+        "bleibende_abweichung_erlaubt": "Nein",
+        "stoerungen_relevant": "Ja",
+    }
+
 
 # ------------------------------------------------------------
-# Hilfsfunktionen
+# Hilfsfunktionen Simulation
 # ------------------------------------------------------------
 
 def blockdiagramm(controller_type: str, plant_type: str, disturbance_position: str) -> str:
-    """
-    Erzeugt ein DOT-Diagramm für st.graphviz_chart.
-    """
-
     disturbance_label = "Störung d(t)"
 
     if disturbance_position == "Keine Störung":
@@ -318,16 +321,6 @@ def simulate_control_loop(
     disturbance_time: float,
     disturbance_value: float,
 ):
-    """
-    Numerische Simulation eines geschlossenen Regelkreises.
-
-    PT1:
-    Ts * dy/dt + y = Ks * u
-
-    PT2:
-    y'' + 2*zeta*omega0*y' + omega0^2*y = Ks*omega0^2*u
-    """
-
     t = np.arange(0.0, t_end + dt, dt)
 
     y_plant = np.zeros_like(t)
@@ -407,10 +400,6 @@ def simulate_control_loop(
 
 
 def calculate_metrics(df: pd.DataFrame, setpoint: float):
-    """
-    Berechnet einfache Kennwerte aus der Simulation.
-    """
-
     y = df["Regelgröße y"].to_numpy()
     t = df["Zeit [s]"].to_numpy()
 
@@ -434,11 +423,11 @@ def calculate_metrics(df: pd.DataFrame, setpoint: float):
     return final_value, steady_error, overshoot, settling_time
 
 
-def build_flow_from_config(config: dict):
-    """
-    Erzeugt Nodes und Edges für den visuellen Builder aus der aktuellen Builder-Konfiguration.
-    """
+# ------------------------------------------------------------
+# Visueller Regelkreis-Builder
+# ------------------------------------------------------------
 
+def build_flow_from_config(config: dict):
     controller_type = config["controller_type"]
     plant_type = config["plant_type"]
     disturbance_position = config["disturbance_position"]
@@ -514,48 +503,12 @@ def build_flow_from_config(config: dict):
     ]
 
     edges = [
-        StreamlitFlowEdge(
-            id="e1",
-            source="sollwert",
-            target="summe",
-            animated=True,
-            label="w"
-        ),
-        StreamlitFlowEdge(
-            id="e2",
-            source="summe",
-            target="regler",
-            animated=True,
-            label="e"
-        ),
-        StreamlitFlowEdge(
-            id="e3",
-            source="regler",
-            target="strecke",
-            animated=True,
-            label="u"
-        ),
-        StreamlitFlowEdge(
-            id="e4",
-            source="strecke",
-            target="ausgang",
-            animated=True,
-            label="y"
-        ),
-        StreamlitFlowEdge(
-            id="e5",
-            source="ausgang",
-            target="rueck",
-            animated=False,
-            label="Istwert"
-        ),
-        StreamlitFlowEdge(
-            id="e6",
-            source="rueck",
-            target="summe",
-            animated=False,
-            label="-y"
-        ),
+        StreamlitFlowEdge(id="e1", source="sollwert", target="summe", animated=True, label="w"),
+        StreamlitFlowEdge(id="e2", source="summe", target="regler", animated=True, label="e"),
+        StreamlitFlowEdge(id="e3", source="regler", target="strecke", animated=True, label="u"),
+        StreamlitFlowEdge(id="e4", source="strecke", target="ausgang", animated=True, label="y"),
+        StreamlitFlowEdge(id="e5", source="ausgang", target="rueck", animated=False, label="Istwert"),
+        StreamlitFlowEdge(id="e6", source="rueck", target="summe", animated=False, label="-y"),
     ]
 
     if disturbance_position == "Vor der Strecke":
@@ -591,27 +544,9 @@ def build_flow_from_config(config: dict):
         edges = [edge for edge in edges if edge.id != "e3"]
 
         edges.extend([
-            StreamlitFlowEdge(
-                id="e7",
-                source="regler",
-                target="summe_stoerung",
-                animated=True,
-                label="u"
-            ),
-            StreamlitFlowEdge(
-                id="e8",
-                source="stoerung",
-                target="summe_stoerung",
-                animated=True,
-                label="d"
-            ),
-            StreamlitFlowEdge(
-                id="e9",
-                source="summe_stoerung",
-                target="strecke",
-                animated=True,
-                label="u+d"
-            ),
+            StreamlitFlowEdge(id="e7", source="regler", target="summe_stoerung", animated=True, label="u"),
+            StreamlitFlowEdge(id="e8", source="stoerung", target="summe_stoerung", animated=True, label="d"),
+            StreamlitFlowEdge(id="e9", source="summe_stoerung", target="strecke", animated=True, label="u+d"),
         ])
 
     elif disturbance_position == "Am Ausgang":
@@ -647,38 +582,15 @@ def build_flow_from_config(config: dict):
         edges = [edge for edge in edges if edge.id != "e4"]
 
         edges.extend([
-            StreamlitFlowEdge(
-                id="e10",
-                source="strecke",
-                target="summe_ausgang",
-                animated=True,
-                label="y"
-            ),
-            StreamlitFlowEdge(
-                id="e11",
-                source="stoerung",
-                target="summe_ausgang",
-                animated=True,
-                label="d"
-            ),
-            StreamlitFlowEdge(
-                id="e12",
-                source="summe_ausgang",
-                target="ausgang",
-                animated=True,
-                label="y+d"
-            ),
+            StreamlitFlowEdge(id="e10", source="strecke", target="summe_ausgang", animated=True, label="y"),
+            StreamlitFlowEdge(id="e11", source="stoerung", target="summe_ausgang", animated=True, label="d"),
+            StreamlitFlowEdge(id="e12", source="summe_ausgang", target="ausgang", animated=True, label="y+d"),
         ])
 
     return StreamlitFlowState(nodes, edges)
 
 
 def render_visual_builder():
-    """
-    Eigene Oberfläche zum visuellen Zusammenbauen des Regelkreises.
-    Die hier eingegebenen Werte werden später für die Simulation verwendet.
-    """
-
     st.title("Visueller Regelkreis-Builder")
 
     st.caption(
@@ -907,11 +819,547 @@ def render_visual_builder():
 
 
 # ------------------------------------------------------------
-# Builder-Ansicht abfangen
+# Physikalischer Wirkplan-Builder
+# ------------------------------------------------------------
+
+def derive_controller_from_wirkplan(config: dict):
+    prozessart = config["prozessart"]
+    traegheit = config["traegheit"]
+    ueberschwingen_zulaessig = config["ueberschwingen_zulaessig"]
+    bleibende_abweichung_erlaubt = config["bleibende_abweichung_erlaubt"]
+    stoerungen_relevant = config["stoerungen_relevant"]
+
+    result = {
+        "controller_type": "PI",
+        "plant_type": "PT1",
+        "kp": 2.0,
+        "ki": 0.4,
+        "kd": 0.0,
+        "ks": 1.0,
+        "ts": 3.0,
+        "zeta": 0.7,
+        "omega0": 2.0,
+        "setpoint": 1.0,
+        "t_end": 25.0,
+        "dt": 0.01,
+        "disturbance_time": 10.0,
+        "disturbance_value": -0.3,
+        "disturbance_position": "Keine Störung",
+        "begruendung": [],
+    }
+
+    if prozessart == "Temperaturregelung":
+        result["plant_type"] = "PT1"
+        result["controller_type"] = "PI"
+        result["kp"] = 1.8
+        result["ki"] = 0.25
+        result["kd"] = 0.0
+        result["ts"] = 8.0
+        result["t_end"] = 50.0
+        result["begruendung"].append(
+            "Temperaturstrecken sind meistens träge PT1-ähnliche Strecken mit thermischer Speichermasse."
+        )
+        result["begruendung"].append(
+            "Ein PI-Regler ist sinnvoll, weil ein reiner P-Regler häufig eine bleibende Temperaturabweichung hinterlässt."
+        )
+
+    elif prozessart == "Drehzahlregelung":
+        result["plant_type"] = "PT1"
+        result["controller_type"] = "PI"
+        result["kp"] = 2.5
+        result["ki"] = 0.7
+        result["kd"] = 0.0
+        result["ts"] = 2.0
+        result["t_end"] = 20.0
+        result["begruendung"].append(
+            "Drehzahlstrecken besitzen mechanische Trägheit und lassen sich vereinfacht oft als PT1-Strecke betrachten."
+        )
+        result["begruendung"].append(
+            "Ein PI-Regler reduziert die bleibende Drehzahlabweichung bei Laständerungen."
+        )
+
+    elif prozessart == "Füllstandsregelung":
+        result["plant_type"] = "PT1"
+        result["controller_type"] = "PI"
+        result["kp"] = 1.5
+        result["ki"] = 0.25
+        result["kd"] = 0.0
+        result["ts"] = 10.0
+        result["t_end"] = 60.0
+        result["begruendung"].append(
+            "Füllstandsprozesse reagieren meist träge und besitzen ein speicherndes Verhalten."
+        )
+        result["begruendung"].append(
+            "Ein PI-Regler ist geeignet, um den Füllstand trotz Zu- oder Abflussstörungen auf Sollwert zu bringen."
+        )
+
+    elif prozessart == "Druckregelung":
+        result["plant_type"] = "PT1"
+        result["controller_type"] = "PI"
+        result["kp"] = 2.0
+        result["ki"] = 0.5
+        result["kd"] = 0.0
+        result["ts"] = 3.0
+        result["t_end"] = 25.0
+        result["begruendung"].append(
+            "Druckregelungen verhalten sich häufig wie mittelträge PT1-Strecken."
+        )
+        result["begruendung"].append(
+            "Ein PI-Regler kann stationäre Druckabweichungen infolge von Verbrauch oder Leckage ausregeln."
+        )
+
+    elif prozessart == "Durchflussregelung":
+        result["plant_type"] = "PT1"
+        result["controller_type"] = "P"
+        result["kp"] = 1.5
+        result["ki"] = 0.0
+        result["kd"] = 0.0
+        result["ts"] = 1.0
+        result["t_end"] = 12.0
+        result["begruendung"].append(
+            "Durchflussstrecken sind oft vergleichsweise schnell."
+        )
+        result["begruendung"].append(
+            "Für einfache Betrachtungen kann ein P-Regler ausreichend sein; bei stationärer Abweichung ist PI sinnvoll."
+        )
+
+    elif prozessart == "Position / Mechanik":
+        result["plant_type"] = "PT2"
+        result["controller_type"] = "PID"
+        result["kp"] = 3.0
+        result["ki"] = 0.4
+        result["kd"] = 0.4
+        result["zeta"] = 0.55
+        result["omega0"] = 2.2
+        result["t_end"] = 20.0
+        result["begruendung"].append(
+            "Mechanische Positionssysteme können schwingfähig sein und werden deshalb vereinfacht als PT2-Strecke abgebildet."
+        )
+        result["begruendung"].append(
+            "Ein PID-Regler kann Überschwingen dämpfen und gleichzeitig stationäre Abweichungen verringern."
+        )
+
+    if traegheit == "sehr träge":
+        result["ts"] *= 1.8
+        result["t_end"] *= 1.5
+        result["kp"] *= 0.8
+        result["ki"] *= 0.7
+        result["begruendung"].append(
+            "Da der Prozess als sehr träge bewertet wurde, werden die Startparameter vorsichtiger gewählt."
+        )
+
+    elif traegheit == "schnell":
+        result["ts"] *= 0.5
+        result["t_end"] *= 0.7
+        result["kp"] *= 1.2
+        result["ki"] *= 1.1
+        result["begruendung"].append(
+            "Da der Prozess als schnell bewertet wurde, wird eine kürzere Zeitkonstante angesetzt."
+        )
+
+    if bleibende_abweichung_erlaubt == "Nein":
+        if result["controller_type"] == "P":
+            result["controller_type"] = "PI"
+            result["ki"] = 0.35
+        result["begruendung"].append(
+            "Da keine bleibende Regelabweichung erlaubt ist, wird mindestens ein PI-Regler empfohlen."
+        )
+
+    if ueberschwingen_zulaessig == "Nein":
+        result["kp"] *= 0.8
+        result["ki"] *= 0.8
+        if result["controller_type"] == "PID":
+            result["kd"] *= 1.2
+        result["begruendung"].append(
+            "Da Überschwingen nicht zulässig ist, werden die Reglerparameter defensiver gewählt."
+        )
+
+    if stoerungen_relevant == "Ja":
+        result["disturbance_position"] = "Vor der Strecke"
+        result["disturbance_time"] = min(10.0, result["t_end"] / 2)
+        result["disturbance_value"] = -0.3
+        result["begruendung"].append(
+            "Da relevante Störungen auftreten, wird eine Laststörung vor der Strecke für die Simulation vorgeschlagen."
+        )
+    else:
+        result["disturbance_position"] = "Keine Störung"
+        result["disturbance_time"] = 0.0
+        result["disturbance_value"] = 0.0
+
+    result["kp"] = round(float(result["kp"]), 3)
+    result["ki"] = round(float(result["ki"]), 3)
+    result["kd"] = round(float(result["kd"]), 3)
+    result["ts"] = round(float(result["ts"]), 3)
+    result["t_end"] = round(float(result["t_end"]), 3)
+
+    return result
+
+
+def build_wirkplan_flow(config: dict):
+    nodes = [
+        StreamlitFlowNode(
+            id="stellgroesse",
+            pos=(0, 180),
+            data={"content": f"Stellgröße<br>{config['stellgroesse']}"},
+            node_type="input",
+            source_position="right",
+            draggable=True
+        ),
+        StreamlitFlowNode(
+            id="prozessglied",
+            pos=(280, 180),
+            data={"content": f"Prozessglied<br>{config['prozessglied']}"},
+            node_type="default",
+            source_position="right",
+            target_position="left",
+            draggable=True
+        ),
+        StreamlitFlowNode(
+            id="speicher",
+            pos=(580, 180),
+            data={"content": f"Speicher / Trägheit<br>{config['speicher']}"},
+            node_type="default",
+            source_position="right",
+            target_position="left",
+            draggable=True
+        ),
+        StreamlitFlowNode(
+            id="regelgroesse",
+            pos=(880, 180),
+            data={"content": f"Regelgröße<br>{config['regelgroesse']}"},
+            node_type="output",
+            target_position="left",
+            draggable=True
+        ),
+    ]
+
+    edges = [
+        StreamlitFlowEdge(
+            id="w1",
+            source="stellgroesse",
+            target="prozessglied",
+            animated=True,
+            label="wirkt auf"
+        ),
+        StreamlitFlowEdge(
+            id="w2",
+            source="prozessglied",
+            target="speicher",
+            animated=True,
+            label="Energie / Stoff"
+        ),
+        StreamlitFlowEdge(
+            id="w3",
+            source="speicher",
+            target="regelgroesse",
+            animated=True,
+            label="Messgröße"
+        ),
+    ]
+
+    if config["stoerungen_relevant"] == "Ja":
+        nodes.append(
+            StreamlitFlowNode(
+                id="stoerung",
+                pos=(580, 30),
+                data={"content": f"Störgröße<br>{config['stoergroesse']}"},
+                node_type="input",
+                source_position="right",
+                draggable=True
+            )
+        )
+
+        edges.append(
+            StreamlitFlowEdge(
+                id="w4",
+                source="stoerung",
+                target="speicher",
+                animated=True,
+                label="Störeinfluss"
+            )
+        )
+
+    return StreamlitFlowState(nodes, edges)
+
+
+def update_wirkplan_defaults_for_process(config: dict):
+    prozessart = config["prozessart"]
+
+    presets = {
+        "Temperaturregelung": {
+            "stellgroesse": "Heizleistung P [W]",
+            "prozessglied": "Heizkörper / Wärmeerzeuger",
+            "speicher": "thermische Masse des Raums",
+            "regelgroesse": "Raumtemperatur T [°C]",
+            "stoergroesse": "Außentemperatur / geöffnete Tür",
+            "traegheit": "sehr träge",
+            "ueberschwingen_zulaessig": "Nein",
+            "bleibende_abweichung_erlaubt": "Nein",
+            "stoerungen_relevant": "Ja",
+        },
+        "Drehzahlregelung": {
+            "stellgroesse": "Motorspannung U [V]",
+            "prozessglied": "Motor / Umrichter",
+            "speicher": "mechanische Trägheit J",
+            "regelgroesse": "Drehzahl n [1/min]",
+            "stoergroesse": "Lastmoment M_L",
+            "traegheit": "mittel",
+            "ueberschwingen_zulaessig": "Ja",
+            "bleibende_abweichung_erlaubt": "Nein",
+            "stoerungen_relevant": "Ja",
+        },
+        "Füllstandsregelung": {
+            "stellgroesse": "Ventilöffnung [%]",
+            "prozessglied": "Zulaufventil / Pumpe",
+            "speicher": "Behältervolumen",
+            "regelgroesse": "Füllstand h [m]",
+            "stoergroesse": "Abfluss / Verbrauch",
+            "traegheit": "sehr träge",
+            "ueberschwingen_zulaessig": "Nein",
+            "bleibende_abweichung_erlaubt": "Nein",
+            "stoerungen_relevant": "Ja",
+        },
+        "Druckregelung": {
+            "stellgroesse": "Pumpendrehzahl / Ventilstellung",
+            "prozessglied": "Pumpe / Rohrnetz",
+            "speicher": "Kompressibilität / Leitungsvolumen",
+            "regelgroesse": "Druck p [bar]",
+            "stoergroesse": "Verbrauch / Leckage",
+            "traegheit": "mittel",
+            "ueberschwingen_zulaessig": "Nein",
+            "bleibende_abweichung_erlaubt": "Nein",
+            "stoerungen_relevant": "Ja",
+        },
+        "Durchflussregelung": {
+            "stellgroesse": "Ventilöffnung [%]",
+            "prozessglied": "Ventil / Rohrstrecke",
+            "speicher": "geringe Prozessspeicherung",
+            "regelgroesse": "Durchfluss q [m³/h]",
+            "stoergroesse": "Vordruckschwankung",
+            "traegheit": "schnell",
+            "ueberschwingen_zulaessig": "Ja",
+            "bleibende_abweichung_erlaubt": "Ja",
+            "stoerungen_relevant": "Nein",
+        },
+        "Position / Mechanik": {
+            "stellgroesse": "Motorspannung / Stellmoment",
+            "prozessglied": "Antrieb / Mechanik",
+            "speicher": "Masse, Feder, Trägheit",
+            "regelgroesse": "Position x [mm]",
+            "stoergroesse": "Lastkraft / Reibung",
+            "traegheit": "mittel",
+            "ueberschwingen_zulaessig": "Nein",
+            "bleibende_abweichung_erlaubt": "Nein",
+            "stoerungen_relevant": "Ja",
+        },
+    }
+
+    if prozessart in presets:
+        for key, value in presets[prozessart].items():
+            config[key] = value
+
+    return config
+
+
+def render_wirkplan_builder():
+    st.title("Physikalischer Wirkplan-Builder")
+
+    st.caption(
+        "Hier startest du nicht mit Regler und Strecke, sondern mit physikalischen Größen. "
+        "Aus dem Wirkplan leitet die App ein geeignetes Streckenmodell und einen Startregler ab."
+    )
+
+    config = st.session_state.wirkplan_config
+
+    col_left, col_right = st.columns([1, 2])
+
+    with col_left:
+        st.subheader("Physikalische Angaben")
+
+        alte_prozessart = config["prozessart"]
+
+        config["prozessart"] = st.selectbox(
+            "Prozessart",
+            [
+                "Temperaturregelung",
+                "Drehzahlregelung",
+                "Füllstandsregelung",
+                "Druckregelung",
+                "Durchflussregelung",
+                "Position / Mechanik"
+            ],
+            index=[
+                "Temperaturregelung",
+                "Drehzahlregelung",
+                "Füllstandsregelung",
+                "Druckregelung",
+                "Durchflussregelung",
+                "Position / Mechanik"
+            ].index(config["prozessart"]),
+            key="wirkplan_prozessart"
+        )
+
+        if config["prozessart"] != alte_prozessart:
+            config = update_wirkplan_defaults_for_process(config)
+            st.session_state.wirkplan_config = config
+            st.rerun()
+
+        with st.expander("1. Physikalische Wirkungskette", expanded=True):
+            config["stellgroesse"] = st.text_input(
+                "Stellgröße",
+                value=config["stellgroesse"],
+                key="wirkplan_stellgroesse"
+            )
+
+            config["prozessglied"] = st.text_input(
+                "Prozessglied",
+                value=config["prozessglied"],
+                key="wirkplan_prozessglied"
+            )
+
+            config["speicher"] = st.text_input(
+                "Speicher / Trägheit",
+                value=config["speicher"],
+                key="wirkplan_speicher"
+            )
+
+            config["regelgroesse"] = st.text_input(
+                "Regelgröße",
+                value=config["regelgroesse"],
+                key="wirkplan_regelgroesse"
+            )
+
+        with st.expander("2. Verhalten des Prozesses", expanded=True):
+            config["traegheit"] = st.selectbox(
+                "Wie träge ist der Prozess?",
+                ["schnell", "mittel", "träge", "sehr träge"],
+                index=["schnell", "mittel", "träge", "sehr träge"].index(config["traegheit"]),
+                key="wirkplan_traegheit"
+            )
+
+            config["ueberschwingen_zulaessig"] = st.selectbox(
+                "Ist Überschwingen zulässig?",
+                ["Ja", "Nein"],
+                index=["Ja", "Nein"].index(config["ueberschwingen_zulaessig"]),
+                key="wirkplan_ueberschwingen"
+            )
+
+            config["bleibende_abweichung_erlaubt"] = st.selectbox(
+                "Ist eine bleibende Regelabweichung erlaubt?",
+                ["Ja", "Nein"],
+                index=["Ja", "Nein"].index(config["bleibende_abweichung_erlaubt"]),
+                key="wirkplan_abweichung"
+            )
+
+        with st.expander("3. Störeinflüsse", expanded=True):
+            config["stoerungen_relevant"] = st.selectbox(
+                "Gibt es relevante Störungen?",
+                ["Ja", "Nein"],
+                index=["Ja", "Nein"].index(config["stoerungen_relevant"]),
+                key="wirkplan_stoerungen"
+            )
+
+            if config["stoerungen_relevant"] == "Ja":
+                config["stoergroesse"] = st.text_input(
+                    "Störgröße",
+                    value=config["stoergroesse"],
+                    key="wirkplan_stoergroesse"
+                )
+            else:
+                config["stoergroesse"] = "keine relevante Störung"
+
+        st.session_state.wirkplan_config = config
+
+        derived = derive_controller_from_wirkplan(config)
+
+        st.divider()
+
+        st.subheader("Abgeleiteter Regler")
+
+        st.write(f"**Empfohlene Strecke:** {derived['plant_type']}")
+        st.write(f"**Empfohlener Regler:** {derived['controller_type']}")
+
+        st.write("**Startparameter:**")
+        st.write(f"- Kp = {derived['kp']}")
+        st.write(f"- Ki = {derived['ki']}")
+        st.write(f"- Kd = {derived['kd']}")
+        st.write(f"- Ks = {derived['ks']}")
+        st.write(f"- Ts = {derived['ts']}")
+        st.write(f"- ζ = {derived['zeta']}")
+        st.write(f"- ω0 = {derived['omega0']}")
+
+        if st.button("Wirkplan übernehmen und Simulation berechnen", type="primary"):
+            st.session_state.controller_type = derived["controller_type"]
+            st.session_state.plant_type = derived["plant_type"]
+            st.session_state.disturbance_position = derived["disturbance_position"]
+
+            st.session_state.defaults = {
+                "kp": derived["kp"],
+                "ki": derived["ki"],
+                "kd": derived["kd"],
+                "ks": derived["ks"],
+                "ts": derived["ts"],
+                "zeta": derived["zeta"],
+                "omega0": derived["omega0"],
+                "setpoint": derived["setpoint"],
+                "t_end": derived["t_end"],
+                "dt": derived["dt"],
+                "disturbance_time": derived["disturbance_time"],
+                "disturbance_value": derived["disturbance_value"],
+            }
+
+            st.session_state.builder_config = st.session_state.defaults.copy()
+            st.session_state.builder_config["controller_type"] = derived["controller_type"]
+            st.session_state.builder_config["plant_type"] = derived["plant_type"]
+            st.session_state.builder_config["disturbance_position"] = derived["disturbance_position"]
+
+            st.session_state.active_view = "simulation"
+            st.rerun()
+
+        if st.button("Zurück zur Simulation ohne Übernahme"):
+            st.session_state.active_view = "simulation"
+            st.rerun()
+
+    with col_right:
+        st.subheader("Grafischer Wirkplan")
+
+        flow_state = build_wirkplan_flow(config)
+
+        streamlit_flow(
+            "wirkplan_flow",
+            flow_state,
+            fit_view=False,
+            show_minimap=True,
+            show_controls=True,
+            allow_new_edges=False,
+            animate_new_edges=False,
+            height=500
+        )
+
+        derived = derive_controller_from_wirkplan(config)
+
+        st.subheader("Begründung der Ableitung")
+
+        for begruendung in derived["begruendung"]:
+            st.write("- " + begruendung)
+
+        with st.expander("Aktueller Wirkplan-Datensatz"):
+            st.json(config)
+
+        with st.expander("Abgeleitete Simulationsdaten"):
+            st.json(derived)
+
+
+# ------------------------------------------------------------
+# Ansichten abfangen
 # ------------------------------------------------------------
 
 if st.session_state.active_view == "builder":
     render_visual_builder()
+    st.stop()
+
+if st.session_state.active_view == "wirkplan":
+    render_wirkplan_builder()
     st.stop()
 
 
@@ -928,7 +1376,7 @@ st.caption(
 
 
 # ------------------------------------------------------------
-# Sidebar: Eingaben mit einklappbaren Menüs
+# Sidebar
 # ------------------------------------------------------------
 
 defaults = st.session_state.defaults
@@ -937,7 +1385,11 @@ with st.sidebar:
 
     st.header("Arbeitsbereich")
 
-    if st.button("Visuellen Builder öffnen"):
+    if st.button("Physikalischen Wirkplan öffnen"):
+        st.session_state.active_view = "wirkplan"
+        st.rerun()
+
+    if st.button("Visuellen Regelkreis-Builder öffnen"):
         st.session_state.active_view = "builder"
         st.rerun()
 
