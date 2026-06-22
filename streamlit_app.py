@@ -17,6 +17,72 @@ st.set_page_config(
     layout="wide"
 )
 
+# ------------------------------------------------------------
+# Grundzustand für Navigation
+# ------------------------------------------------------------
+
+if "app_started" not in st.session_state:
+    st.session_state.app_started = False
+
+if "active_view" not in st.session_state:
+    st.session_state.active_view = "simulation"
+
+
+# ------------------------------------------------------------
+# Obere Navigation
+# ------------------------------------------------------------
+
+def render_top_navigation():
+    """
+    Horizontale Arbeitsbereich-Navigation oberhalb der App.
+    Diese Navigation wird auf jeder Ansicht angezeigt.
+    """
+
+    with st.container(border=True):
+        col1, col2, col3, col4 = st.columns([1.2, 1.6, 1.7, 1.5])
+
+        with col1:
+            if st.button(
+                "Simulation",
+                width="stretch",
+                type="primary" if st.session_state.active_view == "simulation" else "secondary"
+            ):
+                st.session_state.app_started = True
+                st.session_state.active_view = "simulation"
+                st.rerun()
+
+        with col2:
+            if st.button(
+                "Physikalischer Wirkplan",
+                width="stretch",
+                type="primary" if st.session_state.active_view == "wirkplan" else "secondary"
+            ):
+                st.session_state.app_started = True
+                st.session_state.active_view = "wirkplan"
+                st.rerun()
+
+        with col3:
+            if st.button(
+                "Visueller Regelkreis-Builder",
+                width="stretch",
+                type="primary" if st.session_state.active_view == "builder" else "secondary"
+            ):
+                st.session_state.app_started = True
+                st.session_state.active_view = "builder"
+                st.rerun()
+
+        with col4:
+            if st.button(
+                "Startformular neu öffnen",
+                width="stretch",
+                type="primary" if not st.session_state.app_started else "secondary"
+            ):
+                st.session_state.app_started = False
+                st.session_state.active_view = "start"
+                st.rerun()
+
+
+render_top_navigation()
 
 # ------------------------------------------------------------
 # Startformular / Regelkreis-Assistent
@@ -104,10 +170,6 @@ def get_default_parameters(
         defaults["dt"] = 0.002
 
     return defaults
-
-
-if "app_started" not in st.session_state:
-    st.session_state.app_started = False
 
 
 if not st.session_state.app_started:
@@ -249,8 +311,6 @@ if not st.session_state.app_started:
 # Grundzustände
 # ------------------------------------------------------------
 
-if "active_view" not in st.session_state:
-    st.session_state.active_view = "simulation"
 
 if "builder_config" not in st.session_state:
     st.session_state.builder_config = {
@@ -284,54 +344,6 @@ if "wirkplan_config" not in st.session_state:
         "bleibende_abweichung_erlaubt": "Nein",
         "stoerungen_relevant": "Ja",
     }
-
-
-# ------------------------------------------------------------
-# Obere Navigation
-# ------------------------------------------------------------
-
-def render_top_navigation():
-    """
-    Horizontale Arbeitsbereich-Navigation oberhalb der App.
-    """
-
-    with st.container(border=True):
-        col1, col2, col3, col4 = st.columns([1.2, 1.6, 1.7, 1.5])
-
-        with col1:
-            if st.button(
-                "Simulation",
-                width="stretch",
-                type="primary" if st.session_state.active_view == "simulation" else "secondary"
-            ):
-                st.session_state.active_view = "simulation"
-                st.rerun()
-
-        with col2:
-            if st.button(
-                "Physikalischer Wirkplan",
-                width="stretch",
-                type="primary" if st.session_state.active_view == "wirkplan" else "secondary"
-            ):
-                st.session_state.active_view = "wirkplan"
-                st.rerun()
-
-        with col3:
-            if st.button(
-                "Visueller Regelkreis-Builder",
-                width="stretch",
-                type="primary" if st.session_state.active_view == "builder" else "secondary"
-            ):
-                st.session_state.active_view = "builder"
-                st.rerun()
-
-        with col4:
-            if st.button(
-                "Startformular neu öffnen",
-                width="stretch"
-            ):
-                st.session_state.app_started = False
-                st.rerun()
 
 
 # ------------------------------------------------------------
@@ -1430,13 +1442,6 @@ def render_wirkplan_builder():
 
         with st.expander("Abgeleitete Simulationsdaten"):
             st.json(derived)
-
-
-# ------------------------------------------------------------
-# Obere Navigation anzeigen
-# ------------------------------------------------------------
-
-render_top_navigation()
 
 
 # ------------------------------------------------------------
