@@ -5,6 +5,195 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Regelkreis-Labor", layout="wide")
 
+# ------------------------------------------------------------
+# Startformular / Regelkreis-Assistent
+# ------------------------------------------------------------
+
+def get_default_parameters(
+    lernziel: str,
+    controller_type: str,
+    plant_type: str,
+    disturbance_position: str,
+    schwierigkeitsgrad: str
+):
+    """
+    Erzeugt passende Startparameter abhängig von der Auswahl im Formular.
+    Nicht relevante Werte werden trotzdem gesetzt, damit die Simulation stabil läuft.
+    """
+
+    # Grundwerte
+    defaults = {
+        "kp": 2.0,
+        "ki": 0.5,
+        "kd": 0.0,
+        "ks": 1.0,
+        "ts": 2.0,
+        "zeta": 0.7,
+        "omega0": 2.0,
+        "setpoint": 1.0,
+        "t_end": 20.0,
+        "dt": 0.01,
+        "disturbance_time": 8.0,
+        "disturbance_value": -0.3,
+    }
+
+    # Reglertypabhängige Standardwerte
+    if controller_type == "P":
+        defaults["kp"] = 2.0
+        defaults["ki"] = 0.0
+        defaults["kd"] = 0.0
+
+    elif controller_type == "PI":
+        defaults["kp"] = 2.0
+        defaults["ki"] = 0.5
+        defaults["kd"] = 0.0
+
+    elif controller_type == "PID":
+        defaults["kp"] = 3.0
+        defaults["ki"] = 0.5
+        defaults["kd"] = 0.2
+
+    # Streckentypabhängige Standardwerte
+    if plant_type == "PT1":
+        defaults["ts"] = 2.0
+        defaults["zeta"] = 0.7       # nicht relevant, aber intern gefüllt
+        defaults["omega0"] = 2.0     # nicht relevant, aber intern gefüllt
+
+    elif plant_type == "PT2":
+        defaults["ts"] = 2.0         # nicht relevant, aber intern gefüllt
+        defaults["zeta"] = 0.6
+        defaults["omega0"] = 2.0
+
+    # Störung
+    if disturbance_position == "Keine Störung":
+        defaults["disturbance_time"] = 0.0
+        defaults["disturbance_value"] = 0.0
+
+    elif disturbance_position == "Vor der Strecke":
+        defaults["disturbance_time"] = 8.0
+        defaults["disturbance_value"] = -0.3
+
+    elif disturbance_position == "Am Ausgang":
+        defaults["disturbance_time"] = 8.0
+        defaults["disturbance_value"] = -0.3
+
+    # Lernzielabhängige Anpassung
+    if lernziel == "Grundverhalten verstehen":
+        defaults["t_end"] = 20.0
+        defaults["dt"] = 0.01
+
+    elif lernziel == "Störverhalten untersuchen":
+        defaults["t_end"] = 30.0
+        defaults["disturbance_time"] = 10.0
+        if disturbance_position == "Keine Störung":
+            defaults["disturbance_value"] = 0.0
+        else:
+            defaults["disturbance_value"] = -0.3
+
+    elif lernziel == "Regler optimieren":
+        defaults["t_end"] = 30.0
+        defaults["dt"] = 0.005
+
+    # Schwierigkeitsgrad
+    if schwierigkeitsgrad == "Einsteiger":
+        defaults["dt"] = 0.01
+
+    elif schwierigkeitsgrad == "Fortgeschritten":
+        defaults["dt"] = 0.005
+
+    elif schwierigkeitsgrad == "Experte":
+        defaults["dt"] = 0.002
+
+    return defaults
+
+
+if "app_started" not in st.session_state:
+    st.session_state.app_started = False
+
+
+if not st.session_state.app_started:
+
+    st.title("Regelkreis-Assistent")
+
+    st.markdown(
+        """
+        Diese App unterstützt dich beim Aufbau und bei der Analyse eines geschlossenen Regelkreises.  
+        Wähle zuerst aus, was du untersuchen möchtest. Danach erstellt die App automatisch einen passenden
+        Regelkreis mit sinnvollen Startparametern.
+        """
+    )
+
+    with st.form("start_formular"):
+
+        st.subheader("1. Ziel der Untersuchung")
+
+        lernziel = st.selectbox(
+            "Was möchtest du mit dem Regelkreis untersuchen?",
+            [
+                "Grundverhalten verstehen",
+                "Störverhalten untersuchen",
+                "Regler optimieren"
+            ]
+        )
+
+        st.subheader("2. Aufbau des Regelkreises")
+
+        controller_type = st.selectbox(
+            "Welcher Reglertyp soll verwendet werden?",
+            ["P", "PI", "PID"],
+            index=1
+        )
+
+        plant_type = st.selectbox(
+            "Welche Strecke soll untersucht werden?",
+            ["PT1", "PT2"],
+            index=0
+        )
+
+        disturbance_position = st.selectbox(
+            "Soll eine Störung berücksichtigt werden?",
+            [
+                "Keine Störung",
+                "Vor der Strecke",
+                "Am Ausgang"
+            ],
+            index=0
+        )
+
+        st.subheader("3. Bedienmodus")
+
+        schwierigkeitsgrad = st.radio(
+            "Wie viele Details möchtest du einstellen können?",
+            [
+                "Einsteiger",
+                "Fortgeschritten",
+                "Experte"
+            ],
+            horizontal=True
+        )
+
+        submitted = st.form_submit_button("Regelkreis erstellen")
+
+    if submitted:
+        defaults = get_default_parameters(
+            lernziel=lernziel,
+            controller_type=controller_type,
+            plant_type=plant_type,
+            disturbance_position=disturbance_position,
+            schwierigkeitsgrad=schwierigkeitsgrad
+        )
+
+        st.session_state.app_started = True
+        st.session_state.lernziel = lernziel
+        st.session_state.controller_type = controller_type
+        st.session_state.plant_type = plant_type
+        st.session_state.disturbance_position = disturbance_position
+        st.session_state.schwierigkeitsgrad = schwierigkeitsgrad
+        st.session_state.defaults = defaults
+
+        st.rerun()
+
+    st.stop()
 
 # ------------------------------------------------------------
 # Hilfsfunktionen
