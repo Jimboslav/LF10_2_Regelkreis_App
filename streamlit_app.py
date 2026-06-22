@@ -427,186 +427,190 @@ st.caption(
 
 
 # ------------------------------------------------------------
-# Sidebar: Eingaben
+# Sidebar: Eingaben mit einklappbaren Menüs
 # ------------------------------------------------------------
 
 defaults = st.session_state.defaults
 
 with st.sidebar:
 
-    st.header("Auswahl aus dem Startformular")
+    with st.expander("Auswahl aus dem Startformular", expanded=True):
 
-    st.info(
-        f"""
-        **Lernziel:** {st.session_state.lernziel}  
-        **Regler:** {st.session_state.controller_type}  
-        **Strecke:** {st.session_state.plant_type}  
-        **Störung:** {st.session_state.disturbance_position}  
-        **Modus:** {st.session_state.schwierigkeitsgrad}
-        """
-    )
-
-    if st.button("Startformular neu öffnen"):
-        st.session_state.app_started = False
-        st.rerun()
-
-    st.header("1. Regelkreis aufbauen")
-
-    controller_type = st.selectbox(
-        "Reglertyp",
-        ["P", "PI", "PID"],
-        index=["P", "PI", "PID"].index(st.session_state.controller_type)
-    )
-
-    plant_type = st.selectbox(
-        "Streckentyp",
-        ["PT1", "PT2"],
-        index=["PT1", "PT2"].index(st.session_state.plant_type)
-    )
-
-    disturbance_position = st.selectbox(
-        "Störung platzieren",
-        ["Keine Störung", "Vor der Strecke", "Am Ausgang"],
-        index=["Keine Störung", "Vor der Strecke", "Am Ausgang"].index(
-            st.session_state.disturbance_position
+        st.info(
+            f"""
+            **Lernziel:** {st.session_state.lernziel}  
+            **Regler:** {st.session_state.controller_type}  
+            **Strecke:** {st.session_state.plant_type}  
+            **Störung:** {st.session_state.disturbance_position}  
+            **Modus:** {st.session_state.schwierigkeitsgrad}
+            """
         )
-    )
 
-    st.header("2. Reglerparameter")
+        if st.button("Startformular neu öffnen"):
+            st.session_state.app_started = False
+            st.rerun()
 
-    kp = st.number_input(
-        "Kp - Proportionalverstärkung",
-        min_value=0.0,
-        max_value=100.0,
-        value=float(defaults["kp"]),
-        step=0.1,
-        help="Kp bestimmt, wie stark der Regler direkt auf die aktuelle Regelabweichung reagiert."
-    )
 
-    if controller_type in ["PI", "PID"]:
-        ki = st.number_input(
-            "Ki - Integralverstärkung",
+    with st.expander("1. Regelkreis aufbauen", expanded=True):
+
+        controller_type = st.selectbox(
+            "Reglertyp",
+            ["P", "PI", "PID"],
+            index=["P", "PI", "PID"].index(st.session_state.controller_type)
+        )
+
+        plant_type = st.selectbox(
+            "Streckentyp",
+            ["PT1", "PT2"],
+            index=["PT1", "PT2"].index(st.session_state.plant_type)
+        )
+
+        disturbance_position = st.selectbox(
+            "Störung platzieren",
+            ["Keine Störung", "Vor der Strecke", "Am Ausgang"],
+            index=["Keine Störung", "Vor der Strecke", "Am Ausgang"].index(
+                st.session_state.disturbance_position
+            )
+        )
+
+
+    with st.expander("2. Reglerparameter", expanded=False):
+
+        kp = st.number_input(
+            "Kp - Proportionalverstärkung",
             min_value=0.0,
             max_value=100.0,
-            value=float(defaults["ki"]),
+            value=float(defaults["kp"]),
             step=0.1,
-            help="Ki baut eine bleibende Regelabweichung über die Zeit ab."
+            help="Kp bestimmt, wie stark der Regler direkt auf die aktuelle Regelabweichung reagiert."
         )
-    else:
-        ki = 0.0
-        st.caption("Ki wird beim P-Regler automatisch auf 0 gesetzt.")
 
-    if controller_type == "PID":
-        kd = st.number_input(
-            "Kd - Differentialverstärkung",
-            min_value=0.0,
-            max_value=100.0,
-            value=float(defaults["kd"]),
-            step=0.1,
-            help="Kd reagiert auf schnelle Änderungen der Regelabweichung und kann Überschwingen dämpfen."
-        )
-    else:
-        kd = 0.0
-        st.caption("Kd ist nur beim PID-Regler relevant und wird automatisch auf 0 gesetzt.")
+        if controller_type in ["PI", "PID"]:
+            ki = st.number_input(
+                "Ki - Integralverstärkung",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(defaults["ki"]),
+                step=0.1,
+                help="Ki baut eine bleibende Regelabweichung über die Zeit ab."
+            )
+        else:
+            ki = 0.0
+            st.caption("Ki wird beim P-Regler automatisch auf 0 gesetzt.")
 
-    st.header("3. Streckenparameter")
+        if controller_type == "PID":
+            kd = st.number_input(
+                "Kd - Differentialverstärkung",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(defaults["kd"]),
+                step=0.1,
+                help="Kd reagiert auf schnelle Änderungen der Regelabweichung und kann Überschwingen dämpfen."
+            )
+        else:
+            kd = 0.0
+            st.caption("Kd ist nur beim PID-Regler relevant und wird automatisch auf 0 gesetzt.")
 
-    ks = st.number_input(
-        "Ks - Streckenverstärkung",
-        min_value=0.1,
-        max_value=100.0,
-        value=float(defaults["ks"]),
-        step=0.1,
-        help="Ks beschreibt, wie stark die Strecke auf die Stellgröße reagiert."
-    )
 
-    if plant_type == "PT1":
-        ts = st.number_input(
-            "Ts - Zeitkonstante PT1 [s]",
+    with st.expander("3. Streckenparameter", expanded=False):
+
+        ks = st.number_input(
+            "Ks - Streckenverstärkung",
             min_value=0.1,
             max_value=100.0,
-            value=float(defaults["ts"]),
+            value=float(defaults["ks"]),
             step=0.1,
-            help="Ts beschreibt die Trägheit der PT1-Strecke."
+            help="Ks beschreibt, wie stark die Strecke auf die Stellgröße reagiert."
         )
 
-        zeta = defaults["zeta"]
-        omega0 = defaults["omega0"]
+        if plant_type == "PT1":
+            ts = st.number_input(
+                "Ts - Zeitkonstante PT1 [s]",
+                min_value=0.1,
+                max_value=100.0,
+                value=float(defaults["ts"]),
+                step=0.1,
+                help="Ts beschreibt die Trägheit der PT1-Strecke."
+            )
 
-        st.caption("ζ und ω0 sind für PT1 nicht relevant und werden automatisch intern gesetzt.")
+            zeta = defaults["zeta"]
+            omega0 = defaults["omega0"]
 
-    else:
-        zeta = st.number_input(
-            "Dämpfung ζ PT2",
-            min_value=0.05,
-            max_value=5.0,
-            value=float(defaults["zeta"]),
-            step=0.05,
-            help="ζ bestimmt, wie stark die PT2-Strecke schwingt oder gedämpft wird."
-        )
+            st.caption("ζ und ω0 sind für PT1 nicht relevant und werden automatisch intern gesetzt.")
 
-        omega0 = st.number_input(
-            "Eigenkreisfrequenz ω0 PT2 [rad/s]",
-            min_value=0.1,
-            max_value=100.0,
-            value=float(defaults["omega0"]),
+        else:
+            zeta = st.number_input(
+                "Dämpfung ζ PT2",
+                min_value=0.05,
+                max_value=5.0,
+                value=float(defaults["zeta"]),
+                step=0.05,
+                help="ζ bestimmt, wie stark die PT2-Strecke schwingt oder gedämpft wird."
+            )
+
+            omega0 = st.number_input(
+                "Eigenkreisfrequenz ω0 PT2 [rad/s]",
+                min_value=0.1,
+                max_value=100.0,
+                value=float(defaults["omega0"]),
+                step=0.1,
+                help="ω0 beschreibt die Eigenkreisfrequenz der PT2-Strecke."
+            )
+
+            ts = defaults["ts"]
+
+            st.caption("Ts ist für PT2 nicht relevant und wird automatisch intern gesetzt.")
+
+
+    with st.expander("4. Simulation", expanded=False):
+
+        setpoint = st.number_input(
+            "Sollwert w",
+            value=float(defaults["setpoint"]),
             step=0.1,
-            help="ω0 beschreibt die Eigenkreisfrequenz der PT2-Strecke."
+            help="Der Sollwert ist die Führungsgröße, die die Regelgröße erreichen soll."
         )
 
-        ts = defaults["ts"]
-
-        st.caption("Ts ist für PT2 nicht relevant und wird automatisch intern gesetzt.")
-
-    st.header("4. Simulation")
-
-    setpoint = st.number_input(
-        "Sollwert w",
-        value=float(defaults["setpoint"]),
-        step=0.1,
-        help="Der Sollwert ist die Führungsgröße, die die Regelgröße erreichen soll."
-    )
-
-    t_end = st.number_input(
-        "Simulationsdauer [s]",
-        min_value=1.0,
-        max_value=200.0,
-        value=float(defaults["t_end"]),
-        step=1.0
-    )
-
-    if st.session_state.schwierigkeitsgrad == "Experte":
-        dt = st.number_input(
-            "Schrittweite dt [s]",
-            min_value=0.001,
-            max_value=1.0,
-            value=float(defaults["dt"]),
-            step=0.001,
-            format="%.3f",
-            help="Kleinere Schrittweiten erhöhen die Genauigkeit, benötigen aber mehr Rechenpunkte."
-        )
-    else:
-        dt = defaults["dt"]
-        st.caption(f"Schrittweite dt wird automatisch auf {dt} s gesetzt.")
-
-    if disturbance_position != "Keine Störung":
-        disturbance_time = st.number_input(
-            "Störung ab Zeitpunkt [s]",
-            min_value=0.0,
+        t_end = st.number_input(
+            "Simulationsdauer [s]",
+            min_value=1.0,
             max_value=200.0,
-            value=float(defaults["disturbance_time"]),
-            step=0.5
+            value=float(defaults["t_end"]),
+            step=1.0
         )
 
-        disturbance_value = st.number_input(
-            "Störgröße d",
-            value=float(defaults["disturbance_value"]),
-            step=0.1
-        )
-    else:
-        disturbance_time = 0.0
-        disturbance_value = 0.0
-        st.caption("Keine Störung gewählt. Störzeitpunkt und Störgröße werden automatisch auf 0 gesetzt.")
+        if st.session_state.schwierigkeitsgrad == "Experte":
+            dt = st.number_input(
+                "Schrittweite dt [s]",
+                min_value=0.001,
+                max_value=1.0,
+                value=float(defaults["dt"]),
+                step=0.001,
+                format="%.3f",
+                help="Kleinere Schrittweiten erhöhen die Genauigkeit, benötigen aber mehr Rechenpunkte."
+            )
+        else:
+            dt = defaults["dt"]
+            st.caption(f"Schrittweite dt wird automatisch auf {dt} s gesetzt.")
+
+        if disturbance_position != "Keine Störung":
+            disturbance_time = st.number_input(
+                "Störung ab Zeitpunkt [s]",
+                min_value=0.0,
+                max_value=200.0,
+                value=float(defaults["disturbance_time"]),
+                step=0.5
+            )
+
+            disturbance_value = st.number_input(
+                "Störgröße d",
+                value=float(defaults["disturbance_value"]),
+                step=0.1
+            )
+        else:
+            disturbance_time = 0.0
+            disturbance_value = 0.0
+            st.caption("Keine Störung gewählt. Störzeitpunkt und Störgröße werden automatisch auf 0 gesetzt.")
 
 
 # ------------------------------------------------------------
