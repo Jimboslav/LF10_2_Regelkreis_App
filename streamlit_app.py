@@ -491,37 +491,49 @@ with st.sidebar:
         "Ks - Streckenverstärkung",
         min_value=0.1,
         max_value=100.0,
-        value=1.0,
-        step=0.1
-    )
-
-    ts = st.number_input(
-        "Ts - Zeitkonstante PT1 [s]",
-        min_value=0.1,
-        max_value=100.0,
-        value=2.0,
+        value=float(defaults["ks"]),
         step=0.1,
-        disabled=plant_type != "PT1"
+        help="Ks beschreibt, wie stark die Strecke auf die Stellgröße reagiert."
     )
 
-    zeta = st.number_input(
-        "Dämpfung ζ PT2",
-        min_value=0.05,
-        max_value=5.0,
-        value=0.7,
-        step=0.05,
-        disabled=plant_type != "PT2"
-    )
+    if plant_type == "PT1":
+        ts = st.number_input(
+            "Ts - Zeitkonstante PT1 [s]",
+            min_value=0.1,
+            max_value=100.0,
+            value=float(defaults["ts"]),
+            step=0.1,
+            help="Ts beschreibt die Trägheit der PT1-Strecke."
+        )
 
-    omega0 = st.number_input(
-        "Eigenkreisfrequenz ω0 PT2 [rad/s]",
-        min_value=0.1,
-        max_value=100.0,
-        value=2.0,
-        step=0.1,
-        disabled=plant_type != "PT2"
-    )
+        zeta = defaults["zeta"]
+        omega0 = defaults["omega0"]
 
+        st.caption("ζ und ω0 sind für PT1 nicht relevant und werden automatisch intern gesetzt.")
+
+    else:
+        zeta = st.number_input(
+            "Dämpfung ζ PT2",
+            min_value=0.05,
+            max_value=5.0,
+            value=float(defaults["zeta"]),
+            step=0.05,
+            help="ζ bestimmt, wie stark die PT2-Strecke schwingt oder gedämpft wird."
+        )
+
+        omega0 = st.number_input(
+            "Eigenkreisfrequenz ω0 PT2 [rad/s]",
+            min_value=0.1,
+            max_value=100.0,
+            value=float(defaults["omega0"]),
+            step=0.1,
+            help="ω0 beschreibt die Eigenkreisfrequenz der PT2-Strecke."
+        )
+
+    ts = defaults["ts"]
+
+    st.caption("Ts ist für PT2 nicht relevant und wird automatisch intern gesetzt.")
+        
     st.header("4. Simulation")
 
     setpoint = st.number_input(
