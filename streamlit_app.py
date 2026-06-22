@@ -636,6 +636,52 @@ col1.metric("Endwert y", f"{final_value:.3f}")
 col2.metric("bleibende Abweichung", f"{steady_error:.3f}")
 col3.metric("Überschwingen", f"{overshoot:.1f} %")
 
+st.subheader("Automatische Auswertung")
+
+bewertung = []
+
+if abs(steady_error) > 0.05:
+    bewertung.append(
+        "Es bleibt eine erkennbare Regelabweichung bestehen. "
+        "Das ist typisch für einen reinen P-Regler oder eine zu schwache Reglerauslegung."
+    )
+else:
+    bewertung.append(
+        "Die bleibende Regelabweichung ist gering. Der Sollwert wird gut erreicht."
+    )
+
+if overshoot > 20:
+    bewertung.append(
+        "Das Überschwingen ist deutlich. Der Regelkreis ist relativ aggressiv eingestellt."
+    )
+elif overshoot > 5:
+    bewertung.append(
+        "Es ist ein moderates Überschwingen erkennbar."
+    )
+else:
+    bewertung.append(
+        "Das Überschwingen ist gering oder nicht vorhanden."
+    )
+
+if settling_time is None:
+    bewertung.append(
+        "Die Einschwingzeit wurde innerhalb der Simulationsdauer nicht erreicht. "
+        "Die Simulationsdauer könnte zu kurz sein oder der Regelkreis schwingt zu stark."
+    )
+else:
+    bewertung.append(
+        f"Der Regelkreis erreicht das Toleranzband nach etwa {settling_time:.2f} s."
+    )
+
+if disturbance_position != "Keine Störung":
+    bewertung.append(
+        f"Die Störung wurde an der Stelle '{disturbance_position}' eingefügt. "
+        "Im Zeitverlauf ist erkennbar, wie der Regler auf diese Störung reagiert."
+    )
+
+for text in bewertung:
+    st.write("- " + text)
+
 if settling_time is None:
     col4.metric("Einschwingzeit", "nicht erreicht")
 else:
