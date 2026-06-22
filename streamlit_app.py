@@ -895,9 +895,9 @@ with tab_builder:
         fit_view=False,
         show_minimap=True,
         show_controls=True,
-        allow_new_edges=True,
-        animate_new_edges=True,
-        height=520
+        allow_new_edges=False,
+        animate_new_edges=False,
+        height=560
     )
 
     st.session_state.flow_state = updated_state
