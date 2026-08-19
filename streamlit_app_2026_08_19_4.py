@@ -592,7 +592,7 @@ def make_builder_node(kind: str, config: dict):
         },
         "sum": {
             "id": "vergleich",
-            "pos": (210, 220),
+            "pos": (240, 220),
             "content": "Vergleichsstelle Σ<br>e = w − y",
             "node_type": "default",
             "source_position": "right",
@@ -600,7 +600,7 @@ def make_builder_node(kind: str, config: dict):
         },
         "controller": {
             "id": "regler",
-            "pos": (420, 220),
+            "pos": (490, 220),
             "content": (
                 f"{config.get('controller_type', 'PI')}-Regler<br>"
                 f"Kp={config.get('kp', 2.0)}<br>"
@@ -613,7 +613,7 @@ def make_builder_node(kind: str, config: dict):
         },
         "plant": {
             "id": "strecke",
-            "pos": (640, 220),
+            "pos": (760, 220),
             "content": (
                 f"PT1-Strecke<br>Ks={config.get('ks', 1.0)}<br>Ts={config.get('ts', 2.0)} s"
                 if config.get("plant_type", "PT1") == "PT1"
@@ -629,7 +629,7 @@ def make_builder_node(kind: str, config: dict):
         },
         "output": {
             "id": "ausgang",
-            "pos": (860, 220),
+            "pos": (1050, 220),
             "content": config.get("output_name", "Regelgröße y(t)"),
             # default statt output, damit der Ausgang auch eine Quelle
             # für die Rückführung besitzen kann.
@@ -639,7 +639,7 @@ def make_builder_node(kind: str, config: dict):
         },
         "feedback": {
             "id": "rueckfuehrung",
-            "pos": (470, 450),
+            "pos": (520, 470),
             "content": "Rückführung<br>Istwert y(t)",
             "node_type": "default",
             "source_position": "left",
@@ -647,7 +647,7 @@ def make_builder_node(kind: str, config: dict):
         },
         "disturbance": {
             "id": "stoerung",
-            "pos": (620, 40),
+            "pos": (720, 35),
             "content": (
                 f"Störung d(t)<br>d={config.get('disturbance_value', -0.3)}<br>"
                 f"ab {config.get('disturbance_time', 8.0)} s"
@@ -658,7 +658,7 @@ def make_builder_node(kind: str, config: dict):
         },
         "dist_sum": {
             "id": "stoersumme",
-            "pos": (650, 220),
+            "pos": (720, 220),
             "content": "Stör-Summierstelle Σ",
             "node_type": "default",
             "source_position": "right",
@@ -1259,11 +1259,11 @@ def render_visual_builder():
                 st.success("Vergleichsstelle liegt auf der Arbeitsfläche.")
 
             if not builder_has_node("output"):
-                if st.button("Ausgang / Regelgröße hinzufügen", width="stretch"):
+                if st.button("Regelgröße hinzufügen", width="stretch"):
                     add_builder_node("output")
                     st.rerun()
             else:
-                st.success("Ausgang / Regelgröße liegt auf der Arbeitsfläche.")
+                st.success("Regelgröße liegt auf der Arbeitsfläche.")
 
             with st.expander("Warum diese drei Bausteine?", expanded=False):
                 st.write(
@@ -1677,15 +1677,10 @@ def render_visual_builder():
             "Rechtsklick auf Baustein oder Verbindung zum Bearbeiten/Löschen."
         )
 
-        st.caption(
-            "Der Ausgang / die Regelgröße befindet sich rechts am Ende der Hauptkette. "
-            "Mit dem Fit-View-Steuerelement kannst du jederzeit alle Bausteine wieder ins Bild holen."
-        )
-
         st.session_state.builder_flow_state = streamlit_flow(
             "interactive_engineering_builder",
             st.session_state.builder_flow_state,
-            fit_view=True,
+            fit_view=False,
             height=650,
             show_minimap=False,
             show_controls=True,
