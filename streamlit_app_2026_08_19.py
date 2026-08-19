@@ -18,43 +18,6 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------
-# CSS: fixierter Kopfbereich
-# ------------------------------------------------------------
-
-st.markdown(
-    """
-    <style>
-    /* Fixierter Kopfbereich im Hauptfenster */
-    .st-key-sticky_header {
-        position: sticky;
-        top: 0;
-        z-index: 999;
-        background: white;
-        padding-top: 0.75rem;
-        padding-bottom: 0.75rem;
-        border-bottom: 1px solid #E5E7EB;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    }
-
-    .st-key-sticky_header > div {
-        background: white;
-    }
-
-    /* Etwas kompaktere Abstände im fixierten Kopfbereich */
-    .st-key-sticky_header h1 {
-        margin-top: 0.4rem;
-        margin-bottom: 0.15rem;
-    }
-
-    .st-key-sticky_header [data-testid="stMetric"] {
-        padding-top: 0.15rem;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# ------------------------------------------------------------
 # Grundzustand für Navigation
 # ------------------------------------------------------------
 
@@ -119,41 +82,7 @@ def render_top_navigation():
                 st.rerun()
 
 
-
-def render_sticky_simulation_header(
-    final_value=None,
-    steady_error=None,
-    overshoot=None,
-    settling_time=None
-):
-    """
-    Fixierter Kopfbereich für die Simulation.
-    Enthält Navigation, Titel, Beschreibung und Kennzahlen.
-    """
-
-    with st.container(key="sticky_header"):
-
-        render_top_navigation()
-
-        st.title("Regelkreis-Labor")
-
-        st.caption(
-            "Interaktive Simulation eines geschlossenen Regelkreises mit Regler, "
-            "Strecke, Rückführung und optionaler Störung."
-        )
-
-        if final_value is not None:
-            col1, col2, col3, col4 = st.columns(4)
-
-            col1.metric("Endwert y", f"{final_value:.3f}")
-            col2.metric("bleibende Abweichung", f"{steady_error:.3f}")
-            col3.metric("Überschwingen", f"{overshoot:.1f} %")
-
-            if settling_time is None:
-                col4.metric("Einschwingzeit", "nicht erreicht")
-            else:
-                col4.metric("Einschwingzeit", f"{settling_time:.2f} s")
-
+render_top_navigation()
 
 # ------------------------------------------------------------
 # Startformular / Regelkreis-Assistent
@@ -244,9 +173,6 @@ def get_default_parameters(
 
 
 if not st.session_state.app_started:
-
-    with st.container(key="sticky_header"):
-        render_top_navigation()
 
     st.title("Regelkreis-Assistent")
 
@@ -1523,14 +1449,10 @@ def render_wirkplan_builder():
 # ------------------------------------------------------------
 
 if st.session_state.active_view == "builder":
-    with st.container(key="sticky_header"):
-        render_top_navigation()
     render_visual_builder()
     st.stop()
 
 if st.session_state.active_view == "wirkplan":
-    with st.container(key="sticky_header"):
-        render_top_navigation()
     render_wirkplan_builder()
     st.stop()
 
@@ -1539,8 +1461,12 @@ if st.session_state.active_view == "wirkplan":
 # Oberfläche Simulation
 # ------------------------------------------------------------
 
-# Der sichtbare Simulationskopf wird nach der Berechnung der Kennwerte
-# als fixierter Kopfbereich gerendert.
+st.title("Regelkreis-Labor")
+
+st.caption(
+    "Interaktive Simulation eines geschlossenen Regelkreises mit Regler, "
+    "Strecke, Rückführung und optionaler Störung."
+)
 
 
 # ------------------------------------------------------------
@@ -1752,15 +1678,19 @@ final_value, steady_error, overshoot, settling_time = calculate_metrics(df, setp
 
 
 # ------------------------------------------------------------
-# Fixierten Kopfbereich mit Kennzahlen anzeigen
+# Kennzahlen anzeigen
 # ------------------------------------------------------------
 
-render_sticky_simulation_header(
-    final_value=final_value,
-    steady_error=steady_error,
-    overshoot=overshoot,
-    settling_time=settling_time
-)
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Endwert y", f"{final_value:.3f}")
+col2.metric("bleibende Abweichung", f"{steady_error:.3f}")
+col3.metric("Überschwingen", f"{overshoot:.1f} %")
+
+if settling_time is None:
+    col4.metric("Einschwingzeit", "nicht erreicht")
+else:
+    col4.metric("Einschwingzeit", f"{settling_time:.2f} s")
 
 
 # ------------------------------------------------------------
