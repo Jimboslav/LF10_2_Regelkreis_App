@@ -331,13 +331,6 @@ if "builder_config" not in st.session_state:
         "disturbance_value": -0.3,
     }
 
-if "builder_step" not in st.session_state:
-    st.session_state.builder_step = 1
-
-if "builder_last_validation" not in st.session_state:
-    st.session_state.builder_last_validation = None
-
-
 if "wirkplan_config" not in st.session_state:
     st.session_state.wirkplan_config = {
         "prozessart": "Temperaturregelung",
@@ -533,124 +526,27 @@ def calculate_metrics(df: pd.DataFrame, setpoint: float):
 
 
 # ------------------------------------------------------------
-# Visueller Regelkreis-Builder – geführter Engineering-Prozess
+# Visueller Regelkreis-Builder
 # ------------------------------------------------------------
 
-def reset_guided_builder():
-    """Setzt den geführten Regelkreis-Builder auf einen sauberen Startzustand zurück."""
-    for key in list(st.session_state.keys()):
-        if key.startswith("guided_"):
-            del st.session_state[key]
+def build_flow_from_config(config: dict):
+    controller_type = config["controller_type"]
+    plant_type = config["plant_type"]
+    disturbance_position = config["disturbance_position"]
 
-    st.session_state.builder_step = 1
-    st.session_state.builder_last_validation = None
-    st.session_state.builder_config = {
-        "controller_type": "PI",
-        "plant_type": "PT1",
-        "disturbance_position": "Keine Störung",
-        "kp": 2.0,
-        "ki": 0.5,
-        "kd": 0.0,
-        "ks": 1.0,
-        "ts": 2.0,
-        "zeta": 0.7,
-        "omega0": 2.0,
-        "setpoint": 1.0,
-        "t_end": 20.0,
-        "dt": 0.01,
-        "disturbance_time": 8.0,
-        "disturbance_value": -0.3,
-        "setpoint_name": "Sollwert w(t)",
-        "output_name": "Regelgröße y(t)",
-    }
-
-
-def validate_guided_builder(config: dict):
-    """Prüft den im Builder erzeugten Regelkreis auf Vollständigkeit und sinnvolle Parameter."""
-    errors = []
-    warnings = []
-
-    if config.get("controller_type") not in ["P", "PI", "PID"]:
-        errors.append("Es wurde kein gültiger Reglertyp gewählt.")
-
-    if config.get("plant_type") not in ["PT1", "PT2"]:
-        errors.append("Es wurde kein gültiger Streckentyp gewählt.")
-
-    if float(config.get("kp", 0.0)) < 0:
-        errors.append("Kp darf nicht negativ sein.")
-
-    if config.get("controller_type") in ["PI", "PID"] and float(config.get("ki", 0.0)) <= 0:
-        warnings.append("Der I-Anteil ist 0. Der gewählte Regler verhält sich dadurch ohne wirksamen Integralanteil.")
-
-    if config.get("controller_type") == "PID" and float(config.get("kd", 0.0)) <= 0:
-        warnings.append("Der D-Anteil ist 0. Der PID-Regler verhält sich dadurch praktisch wie ein PI-Regler.")
-
-    if float(config.get("ks", 0.0)) <= 0:
-        errors.append("Die Streckenverstärkung Ks muss größer als 0 sein.")
-
-    if config.get("plant_type") == "PT1" and float(config.get("ts", 0.0)) <= 0:
-        errors.append("Die Zeitkonstante Ts der PT1-Strecke muss größer als 0 sein.")
-
-    if config.get("plant_type") == "PT2":
-        if float(config.get("zeta", 0.0)) <= 0:
-            errors.append("Die Dämpfung ζ der PT2-Strecke muss größer als 0 sein.")
-        if float(config.get("omega0", 0.0)) <= 0:
-            errors.append("Die Eigenkreisfrequenz ω0 muss größer als 0 sein.")
-
-    if float(config.get("t_end", 0.0)) <= 0:
-        errors.append("Die Simulationsdauer muss größer als 0 sein.")
-
-    if float(config.get("dt", 0.0)) <= 0:
-        errors.append("Die Schrittweite dt muss größer als 0 sein.")
-    elif float(config.get("dt", 0.0)) >= float(config.get("t_end", 1.0)) / 20:
-        warnings.append("Die Schrittweite dt ist relativ groß. Für eine saubere Simulation sollte sie deutlich kleiner sein.")
-
-    if config.get("disturbance_position") != "Keine Störung":
-        if float(config.get("disturbance_time", 0.0)) >= float(config.get("t_end", 0.0)):
-            warnings.append("Die Störung liegt außerhalb oder genau am Ende der Simulationszeit und wird kaum sichtbar sein.")
-
-    return errors, warnings
-
-
-def build_guided_flow(config: dict, step: int):
-    """
-    Erzeugt den visuellen Regelkreis schrittweise.
-    Je weiter der Engineering-Prozess fortgeschritten ist, desto mehr Bausteine werden eingeblendet.
-    """
-    nodes = []
-    edges = []
-
-    # Schritt 1: Regelaufgabe
-    nodes.append(
+    nodes = [
         StreamlitFlowNode(
             id="sollwert",
-            pos=(0, 190),
-            data={"content": f"{config.get('setpoint_name', 'Sollwert w(t)')}<br>w = {config.get('setpoint', 1.0)}"},
+            pos=(0, 180),
+            data={"content": f"Sollwert<br>w = {config['setpoint']}"},
             node_type="input",
             source_position="right",
             draggable=True
-        )
-    )
-
-    if step == 1:
-        nodes.append(
-            StreamlitFlowNode(
-                id="ziel",
-                pos=(760, 190),
-                data={"content": f"Zielgröße<br>{config.get('output_name', 'Regelgröße y(t)')}"},
-                node_type="output",
-                target_position="left",
-                draggable=True
-            )
-        )
-        return StreamlitFlowState(nodes, edges)
-
-    # Schritt 2: Vergleichsstelle + Regler
-    nodes.extend([
+        ),
         StreamlitFlowNode(
             id="summe",
-            pos=(210, 190),
-            data={"content": "Vergleichsstelle Σ<br>e = w - y"},
+            pos=(220, 180),
+            data={"content": "Σ<br>e = w - y"},
             node_type="default",
             source_position="right",
             target_position="left",
@@ -658,13 +554,13 @@ def build_guided_flow(config: dict, step: int):
         ),
         StreamlitFlowNode(
             id="regler",
-            pos=(450, 190),
+            pos=(460, 180),
             data={
                 "content": (
-                    f"{config.get('controller_type', 'PI')}-Regler<br>"
-                    f"Kp={config.get('kp', 2.0)}<br>"
-                    f"Ki={config.get('ki', 0.0)}<br>"
-                    f"Kd={config.get('kd', 0.0)}"
+                    f"{controller_type}-Regler<br>"
+                    f"Kp={config['kp']}<br>"
+                    f"Ki={config['ki']}<br>"
+                    f"Kd={config['kd']}"
                 )
             },
             node_type="default",
@@ -672,506 +568,353 @@ def build_guided_flow(config: dict, step: int):
             target_position="left",
             draggable=True
         ),
-    ])
-
-    edges.extend([
-        StreamlitFlowEdge(id="b1", source="sollwert", target="summe", animated=True, label="w"),
-        StreamlitFlowEdge(id="b2", source="summe", target="regler", animated=True, label="e"),
-    ])
-
-    if step == 2:
-        return StreamlitFlowState(nodes, edges)
-
-    # Schritt 3: Strecke
-    plant_type = config.get("plant_type", "PT1")
-    if plant_type == "PT1":
-        plant_text = f"PT1-Strecke<br>Ks={config.get('ks', 1.0)}<br>Ts={config.get('ts', 2.0)} s"
-    else:
-        plant_text = (
-            f"PT2-Strecke<br>Ks={config.get('ks', 1.0)}<br>"
-            f"ζ={config.get('zeta', 0.7)}<br>ω0={config.get('omega0', 2.0)} rad/s"
-        )
-
-    nodes.append(
         StreamlitFlowNode(
             id="strecke",
-            pos=(720, 190),
-            data={"content": plant_text},
+            pos=(760, 180),
+            data={
+                "content": (
+                    f"{plant_type}-Strecke<br>"
+                    f"Ks={config['ks']}<br>"
+                    f"Ts={config['ts']}<br>"
+                    f"ζ={config['zeta']}<br>"
+                    f"ω0={config['omega0']}"
+                )
+            },
             node_type="default",
             source_position="right",
             target_position="left",
             draggable=True
-        )
-    )
-
-    edges.append(
-        StreamlitFlowEdge(id="b3", source="regler", target="strecke", animated=True, label="u")
-    )
-
-    if step == 3:
-        return StreamlitFlowState(nodes, edges)
-
-    # Schritt 4 und 5: Ausgang + Rückführung + optionale Störung
-    nodes.extend([
+        ),
         StreamlitFlowNode(
             id="ausgang",
-            pos=(1010, 190),
-            data={"content": f"{config.get('output_name', 'Regelgröße y(t)')}"},
+            pos=(1060, 180),
+            data={"content": "Regelgröße<br>y(t)"},
             node_type="output",
             target_position="left",
             draggable=True
         ),
         StreamlitFlowNode(
             id="rueck",
-            pos=(500, 410),
-            data={"content": "Rückführung<br>Istwert y(t)"},
+            pos=(520, 400),
+            data={"content": "Rückführung<br>-y(t)"},
             node_type="default",
-            source_position="left",
-            target_position="right",
+            source_position="right",
+            target_position="left",
             draggable=True
         ),
-    ])
+    ]
 
-    edges.extend([
-        StreamlitFlowEdge(id="b4", source="strecke", target="ausgang", animated=True, label="y"),
-        StreamlitFlowEdge(id="b5", source="ausgang", target="rueck", animated=False, label="Istwert"),
-        StreamlitFlowEdge(id="b6", source="rueck", target="summe", animated=False, label="-y"),
-    ])
-
-    disturbance_position = config.get("disturbance_position", "Keine Störung")
+    edges = [
+        StreamlitFlowEdge(id="e1", source="sollwert", target="summe", animated=True, label="w"),
+        StreamlitFlowEdge(id="e2", source="summe", target="regler", animated=True, label="e"),
+        StreamlitFlowEdge(id="e3", source="regler", target="strecke", animated=True, label="u"),
+        StreamlitFlowEdge(id="e4", source="strecke", target="ausgang", animated=True, label="y"),
+        StreamlitFlowEdge(id="e5", source="ausgang", target="rueck", animated=False, label="Istwert"),
+        StreamlitFlowEdge(id="e6", source="rueck", target="summe", animated=False, label="-y"),
+    ]
 
     if disturbance_position == "Vor der Strecke":
-        # Regler -> Strecke wird durch zusätzliche Summierstelle ersetzt
-        edges = [edge for edge in edges if edge.id != "b3"]
-        nodes.extend([
+        nodes.append(
             StreamlitFlowNode(
                 id="stoerung",
-                pos=(610, 25),
+                pos=(620, 40),
                 data={
                     "content": (
-                        f"Störung d(t)<br>d={config.get('disturbance_value', -0.3)}<br>"
-                        f"ab {config.get('disturbance_time', 8.0)} s"
+                        f"Störung<br>vor Strecke<br>"
+                        f"d={config['disturbance_value']}<br>"
+                        f"ab {config['disturbance_time']}s"
                     )
                 },
                 node_type="input",
                 source_position="right",
                 draggable=True
-            ),
+            )
+        )
+
+        nodes.append(
             StreamlitFlowNode(
                 id="summe_stoerung",
-                pos=(620, 190),
+                pos=(620, 180),
                 data={"content": "Σ<br>u + d"},
                 node_type="default",
                 source_position="right",
                 target_position="left",
                 draggable=True
-            ),
-        ])
+            )
+        )
+
+        edges = [edge for edge in edges if edge.id != "e3"]
+
         edges.extend([
-            StreamlitFlowEdge(id="b7", source="regler", target="summe_stoerung", animated=True, label="u"),
-            StreamlitFlowEdge(id="b8", source="stoerung", target="summe_stoerung", animated=True, label="d"),
-            StreamlitFlowEdge(id="b9", source="summe_stoerung", target="strecke", animated=True, label="u+d"),
+            StreamlitFlowEdge(id="e7", source="regler", target="summe_stoerung", animated=True, label="u"),
+            StreamlitFlowEdge(id="e8", source="stoerung", target="summe_stoerung", animated=True, label="d"),
+            StreamlitFlowEdge(id="e9", source="summe_stoerung", target="strecke", animated=True, label="u+d"),
         ])
 
     elif disturbance_position == "Am Ausgang":
-        edges = [edge for edge in edges if edge.id != "b4"]
-        nodes.extend([
+        nodes.append(
             StreamlitFlowNode(
                 id="stoerung",
-                pos=(890, 25),
+                pos=(920, 40),
                 data={
                     "content": (
-                        f"Störung d(t)<br>d={config.get('disturbance_value', -0.3)}<br>"
-                        f"ab {config.get('disturbance_time', 8.0)} s"
+                        f"Störung<br>am Ausgang<br>"
+                        f"d={config['disturbance_value']}<br>"
+                        f"ab {config['disturbance_time']}s"
                     )
                 },
                 node_type="input",
                 source_position="right",
                 draggable=True
-            ),
+            )
+        )
+
+        nodes.append(
             StreamlitFlowNode(
                 id="summe_ausgang",
-                pos=(900, 190),
+                pos=(920, 180),
                 data={"content": "Σ<br>y + d"},
                 node_type="default",
                 source_position="right",
                 target_position="left",
                 draggable=True
-            ),
-        ])
+            )
+        )
+
+        edges = [edge for edge in edges if edge.id != "e4"]
+
         edges.extend([
-            StreamlitFlowEdge(id="b10", source="strecke", target="summe_ausgang", animated=True, label="y"),
-            StreamlitFlowEdge(id="b11", source="stoerung", target="summe_ausgang", animated=True, label="d"),
-            StreamlitFlowEdge(id="b12", source="summe_ausgang", target="ausgang", animated=True, label="y+d"),
+            StreamlitFlowEdge(id="e10", source="strecke", target="summe_ausgang", animated=True, label="y"),
+            StreamlitFlowEdge(id="e11", source="stoerung", target="summe_ausgang", animated=True, label="d"),
+            StreamlitFlowEdge(id="e12", source="summe_ausgang", target="ausgang", animated=True, label="y+d"),
         ])
 
     return StreamlitFlowState(nodes, edges)
 
 
-def render_builder_step_header(step: int):
-    steps = [
-        "Regelaufgabe",
-        "Regler",
-        "Strecke",
-        "Rückführung & Störung",
-        "Prüfen & übernehmen",
-    ]
-    st.progress(step / len(steps))
-    st.caption(f"Engineering-Schritt {step} von {len(steps)} · {steps[step - 1]}")
-
-
 def render_visual_builder():
-    """
-    Geführter visueller Regelkreis-Builder.
-    Die Oberfläche zeigt immer nur die Angaben, die im aktuellen Engineering-Schritt benötigt werden.
-    """
-    config = st.session_state.builder_config
-    step = int(st.session_state.builder_step)
-
     st.title("Visueller Regelkreis-Builder")
+
     st.caption(
-        "Der Baukasten führt dich Schritt für Schritt vom Regelungsziel bis zum geprüften geschlossenen Regelkreis. "
-        "Die Arbeitsfläche wächst dabei mit – so bleibt der Aufbau übersichtlich."
+        "Baue hier deinen Regelkreis visuell zusammen. "
+        "Die Parameter werden direkt an den Bausteinen festgelegt und anschließend für die Simulation übernommen."
     )
 
-    render_builder_step_header(step)
+    config = st.session_state.builder_config
 
-    col_work, col_canvas = st.columns([1, 2.15], gap="large")
+    col_left, col_right = st.columns([1, 2])
 
-    with col_work:
-        # ----------------------------------------------------
-        # Schritt 1: Regelaufgabe
-        # ----------------------------------------------------
-        if step == 1:
-            st.subheader("1. Regelaufgabe festlegen")
-            st.write(
-                "Bevor ein Regler gewählt wird, wird festgelegt, **welche Größe auf welchen Sollwert geregelt werden soll**."
-            )
+    with col_left:
+        st.subheader("Bausteine und Parameter")
 
-            config["setpoint_name"] = st.text_input(
-                "Bezeichnung der Führungsgröße",
-                value=config.get("setpoint_name", "Sollwert w(t)"),
-                key="guided_setpoint_name",
-                help="Zum Beispiel: Solltemperatur, Solldrehzahl oder Sollfüllstand."
-            )
-
-            config["output_name"] = st.text_input(
-                "Bezeichnung der Regelgröße",
-                value=config.get("output_name", "Regelgröße y(t)"),
-                key="guided_output_name",
-                help="Die physikalische Größe, die dem Sollwert folgen soll."
-            )
-
-            config["setpoint"] = st.number_input(
-                "Sollwert w",
-                value=float(config.get("setpoint", 1.0)),
-                step=0.1,
-                key="guided_setpoint",
-                help="Für die normierte Simulation kann 1,0 verwendet werden."
-            )
-
-            with st.expander("Warum beginnt der Engineering-Prozess hier?", expanded=False):
-                st.write(
-                    "Eine Regelung wird aus der gewünschten Aufgabe heraus entwickelt. Erst wenn Führungsgröße und "
-                    "Regelgröße bekannt sind, ist klar, was der Regler später erreichen soll."
-                )
-
-        # ----------------------------------------------------
-        # Schritt 2: Regler
-        # ----------------------------------------------------
-        elif step == 2:
-            st.subheader("2. Regler auswählen")
-            st.write("Wähle den Reglerbaustein. Es werden nur die zu diesem Regler gehörenden Parameter eingeblendet.")
-
-            config["controller_type"] = st.radio(
-                "Reglerbaustein",
+        with st.expander("1. Regler-Baustein", expanded=True):
+            config["controller_type"] = st.selectbox(
+                "Reglertyp",
                 ["P", "PI", "PID"],
-                index=["P", "PI", "PID"].index(config.get("controller_type", "PI")),
-                horizontal=True,
-                key="guided_controller_type"
+                index=["P", "PI", "PID"].index(config["controller_type"]),
+                key="builder_controller_type"
             )
 
             config["kp"] = st.number_input(
-                "Kp – Proportionalverstärkung",
+                "Kp",
                 min_value=0.0,
                 max_value=100.0,
-                value=float(config.get("kp", 2.0)),
+                value=float(config["kp"]),
                 step=0.1,
-                key="guided_kp",
-                help="Bestimmt die unmittelbare Reaktion des Reglers auf die Regeldifferenz."
+                key="builder_kp"
             )
 
             if config["controller_type"] in ["PI", "PID"]:
                 config["ki"] = st.number_input(
-                    "Ki – Integralverstärkung",
+                    "Ki",
                     min_value=0.0,
                     max_value=100.0,
-                    value=float(config.get("ki", 0.5)),
+                    value=float(config["ki"]),
                     step=0.1,
-                    key="guided_ki",
-                    help="Hilft dabei, eine bleibende Regelabweichung abzubauen."
+                    key="builder_ki"
                 )
             else:
                 config["ki"] = 0.0
+                st.caption("Ki wird bei P automatisch auf 0 gesetzt.")
 
             if config["controller_type"] == "PID":
                 config["kd"] = st.number_input(
-                    "Kd – Differentialverstärkung",
+                    "Kd",
                     min_value=0.0,
                     max_value=100.0,
-                    value=float(config.get("kd", 0.2)),
+                    value=float(config["kd"]),
                     step=0.1,
-                    key="guided_kd",
-                    help="Reagiert auf schnelle Änderungen und kann Überschwingen dämpfen."
+                    key="builder_kd"
                 )
             else:
                 config["kd"] = 0.0
+                st.caption("Kd wird nur beim PID-Regler verwendet.")
 
-            with st.expander("Auswahlhilfe P / PI / PID", expanded=False):
-                st.markdown(
-                    """
-                    **P:** einfach und schnell, kann aber eine bleibende Regelabweichung hinterlassen.  
-                    **PI:** sehr häufig in der Prozess- und Gebäudeautomation; beseitigt stationäre Abweichungen.  
-                    **PID:** zusätzliche D-Wirkung für dynamische oder schwingfähige Systeme.
-                    """
-                )
-
-        # ----------------------------------------------------
-        # Schritt 3: Strecke
-        # ----------------------------------------------------
-        elif step == 3:
-            st.subheader("3. Regelstrecke modellieren")
-            st.write("Jetzt wird das dynamische Verhalten der Strecke als regelungstechnischer Baustein beschrieben.")
-
-            config["plant_type"] = st.radio(
-                "Streckenbaustein",
+        with st.expander("2. Strecken-Baustein", expanded=True):
+            config["plant_type"] = st.selectbox(
+                "Streckentyp",
                 ["PT1", "PT2"],
-                index=["PT1", "PT2"].index(config.get("plant_type", "PT1")),
-                horizontal=True,
-                key="guided_plant_type"
+                index=["PT1", "PT2"].index(config["plant_type"]),
+                key="builder_plant_type"
             )
 
             config["ks"] = st.number_input(
-                "Ks – Streckenverstärkung",
+                "Ks - Streckenverstärkung",
                 min_value=0.1,
                 max_value=100.0,
-                value=float(config.get("ks", 1.0)),
+                value=float(config["ks"]),
                 step=0.1,
-                key="guided_ks"
+                key="builder_ks"
             )
 
             if config["plant_type"] == "PT1":
                 config["ts"] = st.number_input(
-                    "Ts – Zeitkonstante [s]",
+                    "Ts - Zeitkonstante [s]",
                     min_value=0.1,
                     max_value=100.0,
-                    value=float(config.get("ts", 2.0)),
+                    value=float(config["ts"]),
                     step=0.1,
-                    key="guided_ts",
-                    help="Je größer Ts ist, desto träger reagiert die PT1-Strecke."
+                    key="builder_ts"
                 )
+
                 config["zeta"] = 0.7
                 config["omega0"] = 2.0
+
             else:
                 config["zeta"] = st.number_input(
-                    "ζ – Dämpfung",
+                    "ζ - Dämpfung",
                     min_value=0.05,
                     max_value=5.0,
-                    value=float(config.get("zeta", 0.7)),
+                    value=float(config["zeta"]),
                     step=0.05,
-                    key="guided_zeta"
+                    key="builder_zeta"
                 )
+
                 config["omega0"] = st.number_input(
-                    "ω0 – Eigenkreisfrequenz [rad/s]",
+                    "ω0 - Eigenkreisfrequenz [rad/s]",
                     min_value=0.1,
                     max_value=100.0,
-                    value=float(config.get("omega0", 2.0)),
+                    value=float(config["omega0"]),
                     step=0.1,
-                    key="guided_omega0"
+                    key="builder_omega0"
                 )
+
                 config["ts"] = 2.0
 
-            with st.expander("Auswahlhilfe PT1 / PT2", expanded=False):
-                st.markdown(
-                    """
-                    **PT1:** typische träge Ausgleichsstrecke, z. B. viele Temperatur-, Druck- oder Drehzahlprozesse.  
-                    **PT2:** geeignet für Systeme zweiter Ordnung, bei denen Dämpfung und Schwingverhalten eine Rolle spielen.
-                    """
-                )
-
-        # ----------------------------------------------------
-        # Schritt 4: Rückführung & Störung
-        # ----------------------------------------------------
-        elif step == 4:
-            st.subheader("4. Regelkreis schließen")
-            st.write(
-                "Die Regelgröße wird als Istwert zurückgeführt. Optional kannst du jetzt einen Störeinfluss ergänzen."
-            )
-
-            st.success("Rückführung: y(t) wird automatisch negativ auf die Vergleichsstelle zurückgeführt.")
-
+        with st.expander("3. Störungs-Baustein", expanded=True):
             config["disturbance_position"] = st.selectbox(
-                "Störungsbaustein",
+                "Störung einfügen",
                 ["Keine Störung", "Vor der Strecke", "Am Ausgang"],
                 index=["Keine Störung", "Vor der Strecke", "Am Ausgang"].index(
-                    config.get("disturbance_position", "Keine Störung")
+                    config["disturbance_position"]
                 ),
-                key="guided_disturbance_position"
+                key="builder_disturbance_position"
             )
 
             if config["disturbance_position"] != "Keine Störung":
                 config["disturbance_time"] = st.number_input(
-                    "Störung ab [s]",
+                    "Störung ab Zeitpunkt [s]",
                     min_value=0.0,
                     max_value=200.0,
-                    value=float(config.get("disturbance_time", 8.0)),
+                    value=float(config["disturbance_time"]),
                     step=0.5,
-                    key="guided_disturbance_time"
+                    key="builder_disturbance_time"
                 )
+
                 config["disturbance_value"] = st.number_input(
                     "Störgröße d",
-                    value=float(config.get("disturbance_value", -0.3)),
+                    value=float(config["disturbance_value"]),
                     step=0.1,
-                    key="guided_disturbance_value"
+                    key="builder_disturbance_value"
                 )
             else:
                 config["disturbance_time"] = 0.0
                 config["disturbance_value"] = 0.0
+                st.caption("Keine Störung aktiv.")
 
-            with st.expander("Wo kann eine Störung wirken?", expanded=False):
-                st.markdown(
-                    """
-                    **Vor der Strecke:** typische Last- oder Prozesseinwirkung auf den Streckeneingang.  
-                    **Am Ausgang:** direkte Beeinflussung der Regelgröße.  
-                    Ohne Störung wird zunächst nur das Führungsverhalten untersucht.
-                    """
-                )
-
-        # ----------------------------------------------------
-        # Schritt 5: Prüfung & Simulation
-        # ----------------------------------------------------
-        else:
-            st.subheader("5. Aufbau prüfen und übernehmen")
-            st.write("Zum Abschluss werden Simulationsparameter festgelegt und der entstandene Regelkreis automatisch geprüft.")
+        with st.expander("4. Simulation", expanded=True):
+            config["setpoint"] = st.number_input(
+                "Sollwert w",
+                value=float(config["setpoint"]),
+                step=0.1,
+                key="builder_setpoint"
+            )
 
             config["t_end"] = st.number_input(
                 "Simulationsdauer [s]",
                 min_value=1.0,
                 max_value=200.0,
-                value=float(config.get("t_end", 20.0)),
+                value=float(config["t_end"]),
                 step=1.0,
-                key="guided_t_end"
+                key="builder_t_end"
             )
 
             config["dt"] = st.number_input(
                 "Schrittweite dt [s]",
                 min_value=0.001,
                 max_value=1.0,
-                value=float(config.get("dt", 0.01)),
+                value=float(config["dt"]),
                 step=0.001,
                 format="%.3f",
-                key="guided_dt"
+                key="builder_dt"
             )
-
-            errors, warnings = validate_guided_builder(config)
-            st.session_state.builder_last_validation = {"errors": errors, "warnings": warnings}
-
-            if errors:
-                st.error("Der Regelkreis ist noch nicht simulationsfähig.")
-                for item in errors:
-                    st.write(f"- {item}")
-            else:
-                st.success("Regelkreis vollständig und simulationsfähig.")
-
-            for item in warnings:
-                st.warning(item)
-
-            with st.expander("Zusammenfassung des Engineering-Aufbaus", expanded=True):
-                st.write(f"**Führungsgröße:** {config.get('setpoint_name', 'Sollwert w(t)')} = {config.get('setpoint', 1.0)}")
-                st.write(f"**Regelgröße:** {config.get('output_name', 'Regelgröße y(t)')}")
-                st.write(f"**Regler:** {config.get('controller_type')} · Kp={config.get('kp')} · Ki={config.get('ki')} · Kd={config.get('kd')}")
-                if config.get("plant_type") == "PT1":
-                    st.write(f"**Strecke:** PT1 · Ks={config.get('ks')} · Ts={config.get('ts')} s")
-                else:
-                    st.write(f"**Strecke:** PT2 · Ks={config.get('ks')} · ζ={config.get('zeta')} · ω0={config.get('omega0')} rad/s")
-                st.write(f"**Störung:** {config.get('disturbance_position')}")
-
-            if not errors:
-                if st.button("Regelkreis in Simulation übernehmen", type="primary", width="stretch"):
-                    st.session_state.controller_type = config["controller_type"]
-                    st.session_state.plant_type = config["plant_type"]
-                    st.session_state.disturbance_position = config["disturbance_position"]
-                    st.session_state.defaults = {
-                        "kp": float(config["kp"]),
-                        "ki": float(config["ki"]),
-                        "kd": float(config["kd"]),
-                        "ks": float(config["ks"]),
-                        "ts": float(config["ts"]),
-                        "zeta": float(config["zeta"]),
-                        "omega0": float(config["omega0"]),
-                        "setpoint": float(config["setpoint"]),
-                        "t_end": float(config["t_end"]),
-                        "dt": float(config["dt"]),
-                        "disturbance_time": float(config["disturbance_time"]),
-                        "disturbance_value": float(config["disturbance_value"]),
-                    }
-                    st.session_state.builder_config = config.copy()
-                    st.session_state.active_view = "simulation"
-                    st.rerun()
 
         st.session_state.builder_config = config
 
-        # ----------------------------------------------------
-        # Schritt-Navigation
-        # ----------------------------------------------------
         st.divider()
-        nav_back, nav_next = st.columns(2)
 
-        with nav_back:
-            if step > 1:
-                if st.button("Zurück", width="stretch"):
-                    st.session_state.builder_step = step - 1
-                    st.rerun()
-
-        with nav_next:
-            if step < 5:
-                if st.button("Weiter", type="primary", width="stretch"):
-                    st.session_state.builder_step = step + 1
-                    st.rerun()
-
-        if st.button("Neuen Aufbau starten", width="stretch"):
-            reset_guided_builder()
+        if st.button("Regelkreis übernehmen und berechnen", type="primary"):
+            st.session_state.controller_type = config["controller_type"]
+            st.session_state.plant_type = config["plant_type"]
+            st.session_state.disturbance_position = config["disturbance_position"]
+            st.session_state.defaults = config.copy()
+            st.session_state.active_view = "simulation"
             st.rerun()
 
-    with col_canvas:
-        st.subheader("Arbeitsfläche")
+        if st.button("Builder zurücksetzen"):
+            st.session_state.builder_config = {
+                "controller_type": "PI",
+                "plant_type": "PT1",
+                "disturbance_position": "Keine Störung",
+                "kp": 2.0,
+                "ki": 0.5,
+                "kd": 0.0,
+                "ks": 1.0,
+                "ts": 2.0,
+                "zeta": 0.7,
+                "omega0": 2.0,
+                "setpoint": 1.0,
+                "t_end": 20.0,
+                "dt": 0.01,
+                "disturbance_time": 8.0,
+                "disturbance_value": -0.3,
+            }
+            st.rerun()
 
-        flow_state = build_guided_flow(config, step)
+    with col_right:
+        st.subheader("Grafischer Aufbau")
+
+        flow_state = build_flow_from_config(config)
 
         streamlit_flow(
-            "guided_visual_builder_flow",
+            "visual_builder_flow",
             flow_state,
             fit_view=False,
-            show_minimap=False,
+            show_minimap=True,
             show_controls=True,
             allow_new_edges=False,
             animate_new_edges=False,
-            height=610
+            height=620
         )
 
         st.caption(
-            "Die Bausteine können auf der Arbeitsfläche verschoben werden. "
-            "Neue Elemente erscheinen jeweils dann, wenn sie im Engineering-Prozess benötigt werden."
+            "Die Bausteine können verschoben werden. "
+            "Die fachliche Berechnung erfolgt über die Parameter links."
         )
 
-        if step < 5:
-            next_text = {
-                1: "Als Nächstes wird der Reglerbaustein ausgewählt.",
-                2: "Als Nächstes wird die dynamische Strecke modelliert.",
-                3: "Als Nächstes wird der Regelkreis geschlossen und optional eine Störung ergänzt.",
-                4: "Als Nächstes wird der fertige Aufbau geprüft und in die Simulation übernommen.",
-            }
-            st.info(next_text[step])
+        with st.expander("Aktueller Builder-Datensatz"):
+            st.json(config)
+
 
 # ------------------------------------------------------------
 # Physikalischer Wirkplan-Builder
@@ -1438,7 +1181,6 @@ def build_wirkplan_flow(config: dict):
 
 
 def update_wirkplan_defaults_for_process(config: dict):
-    """Aktualisiert Prozess-Presets und synchronisiert zugleich die sichtbaren Widgets."""
     prozessart = config["prozessart"]
 
     presets = {
@@ -1511,6 +1253,13 @@ def update_wirkplan_defaults_for_process(config: dict):
     }
 
     if prozessart in presets:
+        for key, value in presets[prozessart].items():
+            config[key] = value
+
+        # WICHTIG:
+        # Streamlit speichert Widgets mit einem key separat im session_state.
+        # Deshalb reicht es nicht, nur config zu ändern. Die zugehörigen
+        # Widget-Werte müssen ebenfalls auf die neue Prozessart gesetzt werden.
         widget_keys = {
             "stellgroesse": "wirkplan_stellgroesse",
             "prozessglied": "wirkplan_prozessglied",
@@ -1523,11 +1272,9 @@ def update_wirkplan_defaults_for_process(config: dict):
             "stoerungen_relevant": "wirkplan_stoerungen",
         }
 
-        for key, value in presets[prozessart].items():
-            config[key] = value
-            widget_key = widget_keys.get(key)
-            if widget_key is not None:
-                st.session_state[widget_key] = value
+        for config_key, widget_key in widget_keys.items():
+            if config_key in config:
+                st.session_state[widget_key] = config[config_key]
 
     return config
 
