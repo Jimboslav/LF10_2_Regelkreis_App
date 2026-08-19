@@ -1256,26 +1256,6 @@ def update_wirkplan_defaults_for_process(config: dict):
         for key, value in presets[prozessart].items():
             config[key] = value
 
-        # WICHTIG:
-        # Streamlit speichert Widgets mit einem key separat im session_state.
-        # Deshalb reicht es nicht, nur config zu ändern. Die zugehörigen
-        # Widget-Werte müssen ebenfalls auf die neue Prozessart gesetzt werden.
-        widget_keys = {
-            "stellgroesse": "wirkplan_stellgroesse",
-            "prozessglied": "wirkplan_prozessglied",
-            "speicher": "wirkplan_speicher",
-            "regelgroesse": "wirkplan_regelgroesse",
-            "stoergroesse": "wirkplan_stoergroesse",
-            "traegheit": "wirkplan_traegheit",
-            "ueberschwingen_zulaessig": "wirkplan_ueberschwingen",
-            "bleibende_abweichung_erlaubt": "wirkplan_abweichung",
-            "stoerungen_relevant": "wirkplan_stoerungen",
-        }
-
-        for config_key, widget_key in widget_keys.items():
-            if config_key in config:
-                st.session_state[widget_key] = config[config_key]
-
     return config
 
 
