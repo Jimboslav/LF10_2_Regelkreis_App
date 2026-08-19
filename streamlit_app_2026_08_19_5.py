@@ -172,38 +172,6 @@ def get_default_parameters(
     return defaults
 
 
-# ------------------------------------------------------------
-# Robuste Standardwerte für Session-State
-# ------------------------------------------------------------
-# Diese Werte werden benötigt, wenn der Benutzer z. B. direkt über die
-# obere Navigation in den Builder wechselt und anschließend in die
-# Simulation zurückkehrt, ohne das Startformular erneut abzusenden.
-
-if "lernziel" not in st.session_state:
-    st.session_state.lernziel = "Grundverhalten verstehen"
-
-if "schwierigkeitsgrad" not in st.session_state:
-    st.session_state.schwierigkeitsgrad = "Fortgeschritten"
-
-if "controller_type" not in st.session_state:
-    st.session_state.controller_type = "PI"
-
-if "plant_type" not in st.session_state:
-    st.session_state.plant_type = "PT1"
-
-if "disturbance_position" not in st.session_state:
-    st.session_state.disturbance_position = "Keine Störung"
-
-if "defaults" not in st.session_state:
-    st.session_state.defaults = get_default_parameters(
-        lernziel=st.session_state.lernziel,
-        controller_type=st.session_state.controller_type,
-        plant_type=st.session_state.plant_type,
-        disturbance_position=st.session_state.disturbance_position,
-        schwierigkeitsgrad=st.session_state.schwierigkeitsgrad
-    )
-
-
 if not st.session_state.app_started:
 
     st.title("Regelkreis-Assistent")
@@ -1582,15 +1550,6 @@ def render_visual_builder():
                         st.session_state.plant_type = config["plant_type"]
                         st.session_state.disturbance_position = config["disturbance_position"]
 
-                        # Falls der Builder direkt geöffnet wurde, ohne das
-                        # Startformular erneut auszufüllen, bleiben diese
-                        # beiden Steuerwerte trotzdem definiert.
-                        if "lernziel" not in st.session_state:
-                            st.session_state.lernziel = "Grundverhalten verstehen"
-
-                        if "schwierigkeitsgrad" not in st.session_state:
-                            st.session_state.schwierigkeitsgrad = "Fortgeschritten"
-
                         st.session_state.defaults = {
                             "kp": float(config["kp"]),
                             "ki": float(config["ki"]),
@@ -2256,12 +2215,6 @@ def render_wirkplan_builder():
             st.session_state.plant_type = derived["plant_type"]
             st.session_state.disturbance_position = derived["disturbance_position"]
 
-            if "lernziel" not in st.session_state:
-                st.session_state.lernziel = "Grundverhalten verstehen"
-
-            if "schwierigkeitsgrad" not in st.session_state:
-                st.session_state.schwierigkeitsgrad = "Fortgeschritten"
-
             st.session_state.defaults = {
                 "kp": derived["kp"],
                 "ki": derived["ki"],
@@ -2473,7 +2426,7 @@ with st.sidebar:
             step=1.0
         )
 
-        if st.session_state.get("schwierigkeitsgrad", "Fortgeschritten") == "Experte":
+        if st.session_state.schwierigkeitsgrad == "Experte":
             dt = st.number_input(
                 "Schrittweite dt [s]",
                 min_value=0.001,
