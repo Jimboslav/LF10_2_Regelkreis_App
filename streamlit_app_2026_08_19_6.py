@@ -890,141 +890,6 @@ def edge_exists(source: str, target: str) -> bool:
     )
 
 
-def allowed_builder_connections():
-    """
-    Liefert die Verbindungen, die von der aktuellen Simulation mathematisch
-    unterstützt werden.
-
-    Der Builder bleibt damit interaktiv, aber es können keine Verbindungen
-    entstehen, die im hinterlegten Simulationsmodell keine Bedeutung haben.
-    """
-    config = st.session_state.builder_config
-    disturbance_position = config.get("disturbance_position", "Keine Störung")
-
-    allowed = {
-        ("sollwert", "vergleich"),
-        ("vergleich", "regler"),
-        ("ausgang", "rueckfuehrung"),
-        ("rueckfuehrung", "vergleich"),
-    }
-
-    if disturbance_position == "Keine Störung":
-        allowed.update({
-            ("regler", "strecke"),
-            ("strecke", "ausgang"),
-        })
-
-    elif disturbance_position == "Vor der Strecke":
-        allowed.update({
-            ("regler", "stoersumme"),
-            ("stoerung", "stoersumme"),
-            ("stoersumme", "strecke"),
-            ("strecke", "ausgang"),
-        })
-
-    elif disturbance_position == "Am Ausgang":
-        allowed.update({
-            ("regler", "strecke"),
-            ("strecke", "stoersumme"),
-            ("stoerung", "stoersumme"),
-            ("stoersumme", "ausgang"),
-        })
-
-    return allowed
-
-
-def sanitize_builder_edges():
-    """
-    Entfernt unzulässige, doppelte oder selbstbezügliche Verbindungen.
-
-    Rückgabewert:
-        dict mit Anzahl und Beschreibung der entfernten Verbindungen.
-    """
-    init_builder_flow_state()
-
-    allowed = allowed_builder_connections()
-    original_edges = list(st.session_state.builder_flow_state.edges)
-
-    cleaned_edges = []
-    seen_pairs = set()
-    removed_invalid = 0
-    removed_duplicates = 0
-    removed_self = 0
-
-    for edge in original_edges:
-        pair = (edge.source, edge.target)
-
-        if edge.source == edge.target:
-            removed_self += 1
-            continue
-
-        if pair not in allowed:
-            removed_invalid += 1
-            continue
-
-        if pair in seen_pairs:
-            removed_duplicates += 1
-            continue
-
-        seen_pairs.add(pair)
-        cleaned_edges.append(edge)
-
-    changed = len(cleaned_edges) != len(original_edges)
-
-    if changed:
-        st.session_state.builder_flow_state.edges = cleaned_edges
-
-    return {
-        "changed": changed,
-        "invalid": removed_invalid,
-        "duplicates": removed_duplicates,
-        "self": removed_self,
-        "removed_total": (
-            removed_invalid
-            + removed_duplicates
-            + removed_self
-        ),
-    }
-
-
-def selected_builder_edge():
-    """Liefert die aktuell angeklickte Verbindung oder None."""
-    init_builder_flow_state()
-
-    selected_id = getattr(
-        st.session_state.builder_flow_state,
-        "selected_id",
-        None
-    )
-
-    if not selected_id:
-        return None
-
-    for edge in st.session_state.builder_flow_state.edges:
-        if edge.id == selected_id:
-            return edge
-
-    return None
-
-
-def delete_builder_edge(edge_id: str):
-    """Löscht gezielt eine Verbindung anhand ihrer ID."""
-    init_builder_flow_state()
-
-    st.session_state.builder_flow_state.edges = [
-        edge
-        for edge in st.session_state.builder_flow_state.edges
-        if edge.id != edge_id
-    ]
-
-    try:
-        st.session_state.builder_flow_state.selected_id = None
-    except Exception:
-        pass
-
-    st.session_state.builder_last_validation = None
-
-
 def validate_interactive_builder():
     """
     Prüft nicht nur Parameter, sondern den tatsächlich auf der Arbeitsfläche
@@ -1684,8 +1549,7 @@ def render_visual_builder():
 
             st.info(
                 "Verbindungen werden auf der Arbeitsfläche durch Ziehen vom Ausgang eines Bausteins "
-                "zum Eingang des nächsten Bausteins erzeugt. Nicht unterstützte oder doppelte "
-                "Verbindungen werden automatisch wieder entfernt."
+                "zum Eingang des nächsten Bausteins erzeugt."
             )
 
             if st.button("Regelkreis prüfen", type="primary", width="stretch"):
@@ -1850,8 +1714,8 @@ def render_visual_builder():
         st.subheader("Arbeitsfläche")
 
         st.caption(
-            "Bausteine verschieben · zulässige Anschlüsse verbinden · Verbindung anklicken und mit ✂ löschen · "
-            "Rechtsklick auf Baustein oder Verbindung für das Kontextmenü."
+            "Bausteine verschieben · Anschlüsse verbinden · Baustein anklicken · "
+            "Rechtsklick auf Baustein oder Verbindung zum Bearbeiten/Löschen."
         )
 
         st.caption(
@@ -1875,78 +1739,6 @@ def render_visual_builder():
             get_edge_on_click=True,
             min_zoom=0.2
         )
-
-        # ----------------------------------------------------
-        # Verbindungen fachlich begrenzen
-        # ----------------------------------------------------
-        cleanup = sanitize_builder_edges()
-
-        if cleanup["changed"]:
-            parts = []
-
-            if cleanup["invalid"]:
-                parts.append(
-                    f"{cleanup['invalid']} fachlich nicht unterstützte"
-                )
-
-            if cleanup["duplicates"]:
-                parts.append(
-                    f"{cleanup['duplicates']} doppelte"
-                )
-
-            if cleanup["self"]:
-                parts.append(
-                    f"{cleanup['self']} selbstbezügliche"
-                )
-
-            st.session_state.builder_connection_notice = (
-                ", ".join(parts)
-                + " Verbindung(en) wurden automatisch entfernt."
-            )
-
-            # Der bereinigte Python-State wird damit sofort wieder in die
-            # Flow-Komponente synchronisiert.
-            st.rerun()
-
-        if "builder_connection_notice" in st.session_state:
-            st.warning(st.session_state.builder_connection_notice)
-            del st.session_state.builder_connection_notice
-
-        # ----------------------------------------------------
-        # Verbindung gezielt löschen
-        # ----------------------------------------------------
-        selected_edge = selected_builder_edge()
-
-        tool_col1, tool_col2 = st.columns([1.3, 2.7])
-
-        with tool_col1:
-            if selected_edge is not None:
-                if st.button(
-                    "✂ Verbindung löschen",
-                    type="secondary",
-                    width="stretch",
-                    key="ib_delete_selected_edge"
-                ):
-                    delete_builder_edge(selected_edge.id)
-                    st.rerun()
-            else:
-                st.button(
-                    "✂ Verbindung löschen",
-                    width="stretch",
-                    disabled=True,
-                    key="ib_delete_selected_edge_disabled"
-                )
-
-        with tool_col2:
-            if selected_edge is not None:
-                st.info(
-                    f"Ausgewählt: {selected_edge.source} → {selected_edge.target}"
-                )
-            else:
-                st.caption(
-                    "Zum Löschen zuerst eine Verbindung anklicken. Alternativ: "
-                    "Rechtsklick auf eine Verbindung und im Kontextmenü löschen."
-                )
 
         # Änderungen aus der UI (Verschieben, neue Kanten, Löschen)
         # liegen jetzt wieder in builder_flow_state vor.
