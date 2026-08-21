@@ -385,6 +385,34 @@ if "wirkplan_config" not in st.session_state:
         "ueberschwingen_zulaessig": "Nein",
         "bleibende_abweichung_erlaubt": "Nein",
         "stoerungen_relevant": "Ja",
+        "sensor": "Temperaturfühler",
+        "messglied": "Messumformer",
+        "stellglied": "Leistungssteller / Heizung",
+        "sollwertgeber": "Sollwertvorgabe",
+        "messbereich_min": 0.0,
+        "messbereich_max": 100.0,
+        "sensor_zeitkonstante_s": 0.2,
+        "messrauschen": 0.0,
+        "totzeit_s": 0.0,
+        "stellgroesse_min": 0.0,
+        "stellgroesse_max": 100.0,
+        "stellrate_max": 100.0,
+        "auslegung": "Automatisch",
+        "man_controller_type": "PI",
+        "man_plant_type": "PT1",
+        "man_kp": 2.0,
+        "man_ki": 0.4,
+        "man_kd": 0.0,
+        "man_ks": 1.0,
+        "man_ts": 3.0,
+        "man_zeta": 0.7,
+        "man_omega0": 2.0,
+        "man_setpoint": 1.0,
+        "man_t_end": 25.0,
+        "man_dt": 0.01,
+        "stoerort": "Vor der Strecke",
+        "stoerzeit_s": 10.0,
+        "stoerwert": -0.3,
         "reale_daten_aktiv": True,
         "eingabetiefe": "Einfach",
         # Temperaturstrecke
@@ -416,6 +444,27 @@ if "wirkplan_config" not in st.session_state:
         "tank_zulauf_m3h": 8.0,
         "tank_abfluss_m3h": 3.0,
         "tank_soll_m": 1.4,
+        # Druckstrecke
+        "druck_volumen_m3": 1.0,
+        "druck_max_bar": 10.0,
+        "druck_soll_bar": 6.0,
+        "druck_foerderstrom_m3h": 60.0,
+        "druck_verbrauch_m3h": 20.0,
+        "druck_zeitkonstante_s": 3.0,
+        # Durchflussstrecke
+        "flow_max_m3h": 100.0,
+        "flow_soll_m3h": 60.0,
+        "flow_rohrlaenge_m": 20.0,
+        "flow_durchmesser_mm": 80.0,
+        "flow_ventilzeit_s": 0.8,
+        "flow_druckverlust_bar": 1.5,
+        # Positionsstrecke
+        "pos_masse_kg": 25.0,
+        "pos_feder_n_m": 1200.0,
+        "pos_daempfung_ns_m": 180.0,
+        "pos_stellkraft_n": 1500.0,
+        "pos_hub_mm": 500.0,
+        "pos_soll_mm": 250.0,
     }
 
 
@@ -2071,10 +2120,73 @@ def ensure_real_process_defaults(config: dict):
         "tank_zulauf_m3h": 8.0,
         "tank_abfluss_m3h": 3.0,
         "tank_soll_m": 1.4,
+        "druck_volumen_m3": 1.0,
+        "druck_max_bar": 10.0,
+        "druck_soll_bar": 6.0,
+        "druck_foerderstrom_m3h": 60.0,
+        "druck_verbrauch_m3h": 20.0,
+        "druck_zeitkonstante_s": 3.0,
+        "flow_max_m3h": 100.0,
+        "flow_soll_m3h": 60.0,
+        "flow_rohrlaenge_m": 20.0,
+        "flow_durchmesser_mm": 80.0,
+        "flow_ventilzeit_s": 0.8,
+        "flow_druckverlust_bar": 1.5,
+        "pos_masse_kg": 25.0,
+        "pos_feder_n_m": 1200.0,
+        "pos_daempfung_ns_m": 180.0,
+        "pos_stellkraft_n": 1500.0,
+        "pos_hub_mm": 500.0,
+        "pos_soll_mm": 250.0,
+        "sensor": "Temperaturfühler",
+        "messglied": "Messumformer",
+        "stellglied": "Leistungssteller / Heizung",
+        "sollwertgeber": "Sollwertvorgabe",
+        "messbereich_min": 0.0,
+        "messbereich_max": 100.0,
+        "sensor_zeitkonstante_s": 0.2,
+        "messrauschen": 0.0,
+        "totzeit_s": 0.0,
+        "stellgroesse_min": 0.0,
+        "stellgroesse_max": 100.0,
+        "stellrate_max": 100.0,
+        "auslegung": "Automatisch",
+        "man_controller_type": "PI",
+        "man_plant_type": "PT1",
+        "man_kp": 2.0,
+        "man_ki": 0.4,
+        "man_kd": 0.0,
+        "man_ks": 1.0,
+        "man_ts": 3.0,
+        "man_zeta": 0.7,
+        "man_omega0": 2.0,
+        "man_setpoint": 1.0,
+        "man_t_end": 25.0,
+        "man_dt": 0.01,
+        "stoerort": "Vor der Strecke",
+        "stoerzeit_s": 10.0,
+        "stoerwert": -0.3,
     }
     for key, value in defaults.items():
         config.setdefault(key, value)
     return config
+
+
+def validate_wirkplan_config(config: dict):
+    """Prüft prozessübergreifende Grenzen, bevor Daten in die Simulation gelangen."""
+    errors = []
+    if float(config.get("stellgroesse_min", 0.0)) >= float(config.get("stellgroesse_max", 100.0)):
+        errors.append("Die maximale Stellgröße muss größer als die minimale Stellgröße sein.")
+    if float(config.get("messbereich_min", 0.0)) >= float(config.get("messbereich_max", 100.0)):
+        errors.append("Das Messbereichsmaximum muss größer als das Messbereichsminimum sein.")
+    if config.get("auslegung") == "Manuell":
+        if float(config.get("man_dt", 0.01)) >= float(config.get("man_t_end", 25.0)):
+            errors.append("Der Zeitschritt dt muss kleiner als die Simulationsdauer sein.")
+        if config.get("man_controller_type") in ["PI", "PID"] and float(config.get("man_ki", 0.0)) <= 0:
+            errors.append("Ein PI-/PID-Regler benötigt Ki > 0.")
+        if config.get("man_controller_type") == "PID" and float(config.get("man_kd", 0.0)) <= 0:
+            errors.append("Ein PID-Regler benötigt Kd > 0.")
+    return errors
 
 
 def calculate_real_process_data(config: dict):
@@ -2083,7 +2195,8 @@ def calculate_real_process_data(config: dict):
     result = {
         "active": bool(config.get("reale_daten_aktiv", True)),
         "supported": prozessart in {
-            "Temperaturregelung", "Drehzahlregelung", "Füllstandsregelung"
+            "Temperaturregelung", "Drehzahlregelung", "Füllstandsregelung",
+            "Druckregelung", "Durchflussregelung", "Position / Mechanik"
         },
         "metrics": [],
         "warnings": [],
@@ -2293,13 +2406,102 @@ def calculate_real_process_data(config: dict):
             "Querschnitt, Nettozulauf und Zielhöhe bestimmen die reale Füllzeit; daraus wird ein PT1-Ersatzmodell für die vorhandene Simulation abgeleitet."
         )
 
+    elif prozessart == "Druckregelung":
+        volumen = max(float(config.get("druck_volumen_m3", 1.0)), 0.001)
+        p_max = max(float(config.get("druck_max_bar", 10.0)), 0.01)
+        p_soll = _clamp(config.get("druck_soll_bar", 6.0), 0.0, p_max)
+        foerderstrom = max(float(config.get("druck_foerderstrom_m3h", 60.0)), 0.001)
+        verbrauch = max(float(config.get("druck_verbrauch_m3h", 20.0)), 0.0)
+        vorgabe_ts = max(float(config.get("druck_zeitkonstante_s", 3.0)), 0.05)
+        netto = foerderstrom - verbrauch
+        fuellzeit = volumen / max(abs(netto), 0.001) * 3600.0
+        ts = max(vorgabe_ts, fuellzeit / 3.0)
+        if netto <= 0:
+            result["warnings"].append(
+                "Der Förderstrom ist nicht größer als der Verbrauch; der Solldruck ist so nicht dauerhaft erreichbar."
+            )
+        result.update({
+            "plant_type": "PT1", "ks": p_max / 100.0, "ts": ts,
+            "setpoint": p_soll, "t_end": max(20.0, 6.0 * ts),
+            "disturbance_value": -max(0.1, 0.1 * p_soll),
+            "input_unit": "% Verdichterleistung", "output_unit": "bar",
+            "model_note": "Das Druckmodell nutzt Behältervolumen, Förderstrom, Verbrauch und eine minimale Anlagenzeitkonstante als PT1-Näherung.",
+        })
+        result["metrics"] = [
+            ("Behältervolumen", f"{volumen:.3f} m³"), ("Netto-Förderstrom", f"{netto:.2f} m³/h"),
+            ("Füllzeit", f"{fuellzeit:.1f} s"), ("PT1-Zeitkonstante", f"{ts:.2f} s"),
+            ("Solldruck", f"{p_soll:.2f} bar"), ("Maximaldruck", f"{p_max:.2f} bar"),
+        ]
+        result["node_details"] = {
+            "stellgroesse": f"0–100 %, {foerderstrom:.1f} m³/h", "prozessglied": "Verdichter / Ventil",
+            "speicher": f"{volumen:.2f} m³ Druckspeicher", "regelgroesse": f"Soll {p_soll:.2f} bar",
+        }
+        result["begruendung"].append("Speichervolumen und Netto-Förderstrom bestimmen die Druckdynamik des PT1-Ersatzmodells.")
+
+    elif prozessart == "Durchflussregelung":
+        q_max = max(float(config.get("flow_max_m3h", 100.0)), 0.001)
+        q_soll = _clamp(config.get("flow_soll_m3h", 60.0), 0.0, q_max)
+        laenge = max(float(config.get("flow_rohrlaenge_m", 20.0)), 0.0)
+        durchmesser = max(float(config.get("flow_durchmesser_mm", 80.0)), 1.0)
+        ventilzeit = max(float(config.get("flow_ventilzeit_s", 0.8)), 0.01)
+        druckverlust = max(float(config.get("flow_druckverlust_bar", 1.5)), 0.0)
+        rohrvolumen = np.pi * (durchmesser / 2000.0) ** 2 * laenge
+        transportzeit = rohrvolumen / q_max * 3600.0
+        ts = max(ventilzeit, transportzeit)
+        result.update({
+            "plant_type": "PT1", "ks": q_max / 100.0, "ts": ts,
+            "setpoint": q_soll, "t_end": max(10.0, 8.0 * ts),
+            "disturbance_value": -max(0.1, 0.1 * q_soll),
+            "input_unit": "% Ventilöffnung", "output_unit": "m³/h",
+            "model_note": "Ventildynamik und Transportzeit im Rohr werden zu einer robusten PT1-Näherung zusammengefasst.",
+        })
+        result["metrics"] = [
+            ("Rohrvolumen", f"{rohrvolumen:.3f} m³"), ("Transportzeit", f"{transportzeit:.2f} s"),
+            ("Ventilzeit", f"{ventilzeit:.2f} s"), ("PT1-Zeitkonstante", f"{ts:.2f} s"),
+            ("Sollfluss", f"{q_soll:.2f} m³/h"), ("Druckverlust", f"{druckverlust:.2f} bar"),
+        ]
+        result["node_details"] = {
+            "stellgroesse": "Ventil 0–100 %", "prozessglied": f"Rohr DN {durchmesser:.0f}, {laenge:.1f} m",
+            "speicher": f"Rohrvolumen {rohrvolumen:.3f} m³", "regelgroesse": f"Soll {q_soll:.1f} m³/h",
+        }
+        result["begruendung"].append("Ventilzeit und Rohrvolumen bestimmen die Durchflussdynamik.")
+
+    elif prozessart == "Position / Mechanik":
+        masse = max(float(config.get("pos_masse_kg", 25.0)), 0.001)
+        feder = max(float(config.get("pos_feder_n_m", 1200.0)), 0.001)
+        daempfung = max(float(config.get("pos_daempfung_ns_m", 180.0)), 0.0)
+        kraft = max(float(config.get("pos_stellkraft_n", 1500.0)), 0.001)
+        hub = max(float(config.get("pos_hub_mm", 500.0)), 0.001)
+        soll = _clamp(config.get("pos_soll_mm", 250.0), 0.0, hub)
+        omega0 = np.sqrt(feder / masse)
+        zeta = daempfung / (2.0 * np.sqrt(feder * masse))
+        ts_equiv = 1.0 / max(omega0, 0.001)
+        result.update({
+            "plant_type": "PT2", "ks": hub / 100.0, "ts": ts_equiv,
+            "zeta": _clamp(zeta, 0.05, 3.0), "omega0": omega0,
+            "setpoint": soll, "t_end": max(10.0, 10.0 / max(omega0, 0.001)),
+            "disturbance_value": -max(0.1, 0.05 * soll),
+            "input_unit": "% Stellkraft", "output_unit": "mm",
+            "model_note": "Masse, Feder und Dämpfung bilden ein physikalisches PT2-Modell.",
+        })
+        result["metrics"] = [
+            ("Masse", f"{masse:.2f} kg"), ("Stellkraft", f"{kraft:.1f} N"),
+            ("Eigenkreisfrequenz", f"{omega0:.3f} rad/s"), ("Dämpfungsgrad", f"{zeta:.3f}"),
+            ("Hub", f"{hub:.1f} mm"), ("Sollposition", f"{soll:.1f} mm"),
+        ]
+        result["node_details"] = {
+            "stellgroesse": f"Stellkraft {kraft:.0f} N", "prozessglied": "Antrieb / Mechanik",
+            "speicher": f"m={masse:.1f} kg, k={feder:.0f} N/m", "regelgroesse": f"Soll {soll:.1f} mm",
+        }
+        result["begruendung"].append("Masse, Federsteifigkeit und Dämpfung bestimmen Eigenfrequenz und Dämpfungsgrad des PT2-Modells.")
+
     if "ks" in result:
         # Einfache, robuste IMC-nahe Startauslegung für ein PT1-Modell ohne Totzeit.
         result["kp"] = _clamp(2.0 / max(result["ks"], 0.001), 0.001, 100.0)
         result["ki"] = _clamp(result["kp"] / max(result["ts"], 0.1), 0.0, 100.0)
         result["dt"] = _clamp(result["t_end"] / 5000.0, 0.01, 60.0)
-        result["u_min"] = 0.0
-        result["u_max"] = 100.0
+        result["u_min"] = float(config.get("stellgroesse_min", 0.0))
+        result["u_max"] = float(config.get("stellgroesse_max", 100.0))
 
     return result
 
@@ -2427,13 +2629,15 @@ def derive_controller_from_wirkplan(config: dict):
     uses_real_model = physical.get("active") and physical.get("supported") and "ks" in physical
 
     if uses_real_model:
-        result["plant_type"] = "PT1"
+        result["plant_type"] = physical.get("plant_type", "PT1")
         result["controller_type"] = "PI"
         result["kp"] = physical["kp"]
         result["ki"] = physical["ki"]
         result["kd"] = 0.0
         result["ks"] = physical["ks"]
         result["ts"] = physical["ts"]
+        result["zeta"] = physical.get("zeta", result["zeta"])
+        result["omega0"] = physical.get("omega0", result["omega0"])
         result["setpoint"] = physical["setpoint"]
         result["t_end"] = physical["t_end"]
         result["dt"] = physical["dt"]
@@ -2479,13 +2683,11 @@ def derive_controller_from_wirkplan(config: dict):
         )
 
     if stoerungen_relevant == "Ja":
-        result["disturbance_position"] = "Vor der Strecke"
-        if uses_real_model:
-            result["disturbance_time"] = result["t_end"] / 2
-        else:
-            result["disturbance_time"] = min(10.0, result["t_end"] / 2)
-        if not uses_real_model:
-            result["disturbance_value"] = -0.3
+        result["disturbance_position"] = config.get("stoerort", "Vor der Strecke")
+        result["disturbance_time"] = _clamp(
+            config.get("stoerzeit_s", result["t_end"] / 2), 0.0, result["t_end"]
+        )
+        result["disturbance_value"] = float(config.get("stoerwert", result["disturbance_value"]))
         result["begruendung"].append(
             "Da relevante Störungen auftreten, wird eine Laststörung vor der Strecke für die Simulation vorgeschlagen."
         )
@@ -2493,6 +2695,25 @@ def derive_controller_from_wirkplan(config: dict):
         result["disturbance_position"] = "Keine Störung"
         result["disturbance_time"] = 0.0
         result["disturbance_value"] = 0.0
+
+    if config.get("auslegung") == "Manuell":
+        result.update({
+            "controller_type": config.get("man_controller_type", "PI"),
+            "plant_type": config.get("man_plant_type", "PT1"),
+            "kp": max(float(config.get("man_kp", result["kp"])), 0.0),
+            "ki": max(float(config.get("man_ki", result["ki"])), 0.0),
+            "kd": max(float(config.get("man_kd", result["kd"])), 0.0),
+            "ks": max(float(config.get("man_ks", result["ks"])), 0.000001),
+            "ts": max(float(config.get("man_ts", result["ts"])), 0.000001),
+            "zeta": max(float(config.get("man_zeta", result["zeta"])), 0.01),
+            "omega0": max(float(config.get("man_omega0", result["omega0"])), 0.000001),
+            "setpoint": float(config.get("man_setpoint", result["setpoint"])),
+            "t_end": max(float(config.get("man_t_end", result["t_end"])), 0.1),
+            "dt": max(float(config.get("man_dt", result["dt"])), 0.0001),
+        })
+        result["begruendung"].append(
+            "Die automatisch abgeleitete Auslegung wurde durch die manuellen Expertenwerte ersetzt."
+        )
 
     result["kp"] = round(float(result["kp"]), 3)
     result["ki"] = round(float(result["ki"]), 8)
@@ -2518,10 +2739,30 @@ def build_wirkplan_flow(config: dict):
             return f"{title}<br>{config_value}<br><b>{detail}</b>"
         return f"{title}<br>{config_value}"
 
+    derived = derive_controller_from_wirkplan(config)
     nodes = [
         StreamlitFlowNode(
+            id="sollwert", pos=(0, 180),
+            data={"content": f"Führungsgröße w<br>{config['sollwertgeber']}<br><b>{derived['setpoint']}</b>"},
+            node_type="input", source_position="right", draggable=True
+        ),
+        StreamlitFlowNode(
+            id="vergleich", pos=(240, 180), data={"content": "Vergleichsstelle<br>e = w − x"},
+            node_type="default", source_position="right", target_position="left", draggable=True
+        ),
+        StreamlitFlowNode(
+            id="regler", pos=(500, 180),
+            data={"content": f"Regler<br><b>{derived['controller_type']}</b><br>Kp={derived['kp']}, Ki={derived['ki']}, Kd={derived['kd']}"},
+            node_type="default", source_position="right", target_position="left", draggable=True
+        ),
+        StreamlitFlowNode(
+            id="stellglied", pos=(800, 180),
+            data={"content": f"Stellglied<br>{config['stellglied']}<br><b>{config['stellgroesse']}</b>"},
+            node_type="default", source_position="right", target_position="left", draggable=True
+        ),
+        StreamlitFlowNode(
             id="stellgroesse",
-            pos=(0, 180),
+            pos=(1090, 180),
             data={"content": node_content("Stellgröße", config["stellgroesse"], "stellgroesse")},
             node_type="input",
             source_position="right",
@@ -2529,7 +2770,7 @@ def build_wirkplan_flow(config: dict):
         ),
         StreamlitFlowNode(
             id="prozessglied",
-            pos=(280, 180),
+            pos=(1380, 180),
             data={"content": node_content("Prozessglied", config["prozessglied"], "prozessglied")},
             node_type="default",
             source_position="right",
@@ -2538,7 +2779,7 @@ def build_wirkplan_flow(config: dict):
         ),
         StreamlitFlowNode(
             id="speicher",
-            pos=(580, 180),
+            pos=(1680, 180),
             data={"content": node_content("Speicher / Trägheit", config["speicher"], "speicher")},
             node_type="default",
             source_position="right",
@@ -2547,15 +2788,24 @@ def build_wirkplan_flow(config: dict):
         ),
         StreamlitFlowNode(
             id="regelgroesse",
-            pos=(880, 180),
+            pos=(1980, 180),
             data={"content": node_content("Regelgröße", config["regelgroesse"], "regelgroesse")},
             node_type="output",
             target_position="left",
             draggable=True
         ),
+        StreamlitFlowNode(
+            id="sensor", pos=(1680, 400),
+            data={"content": f"Sensor / Messglied<br>{config['sensor']}<br>{config['messglied']}"},
+            node_type="default", source_position="left", target_position="right", draggable=True
+        ),
     ]
 
     edges = [
+        StreamlitFlowEdge(id="r1", source="sollwert", target="vergleich", animated=True, label="w"),
+        StreamlitFlowEdge(id="r2", source="vergleich", target="regler", animated=True, label="e"),
+        StreamlitFlowEdge(id="r3", source="regler", target="stellglied", animated=True, label="u"),
+        StreamlitFlowEdge(id="r4", source="stellglied", target="stellgroesse", animated=True, label="Stellsignal"),
         StreamlitFlowEdge(
             id="w1",
             source="stellgroesse",
@@ -2563,6 +2813,8 @@ def build_wirkplan_flow(config: dict):
             animated=True,
             label="wirkt auf"
         ),
+        StreamlitFlowEdge(id="r5", source="regelgroesse", target="sensor", animated=True, label="x"),
+        StreamlitFlowEdge(id="r6", source="sensor", target="vergleich", animated=True, label="Rückführung (−)"),
         StreamlitFlowEdge(
             id="w2",
             source="prozessglied",
@@ -2583,7 +2835,7 @@ def build_wirkplan_flow(config: dict):
         nodes.append(
             StreamlitFlowNode(
                 id="stoerung",
-                pos=(580, 30),
+                pos=(1380, 20),
                 data={"content": f"Störgröße<br>{config['stoergroesse']}"},
                 node_type="input",
                 source_position="right",
@@ -2595,7 +2847,7 @@ def build_wirkplan_flow(config: dict):
             StreamlitFlowEdge(
                 id="w4",
                 source="stoerung",
-                target="speicher",
+                target="prozessglied" if config.get("stoerort") == "Vor der Strecke" else "regelgroesse",
                 animated=True,
                 label="Störeinfluss"
             )
@@ -2696,6 +2948,21 @@ def update_wirkplan_defaults_for_process(config: dict):
             if widget_key is not None:
                 st.session_state[widget_key] = value
 
+        chain_presets = {
+            "Temperaturregelung": ("Leistungssteller / Heizung", "Temperaturfühler", "Messumformer"),
+            "Drehzahlregelung": ("Frequenzumrichter", "Drehgeber", "Drehzahlmessumformer"),
+            "Füllstandsregelung": ("Stellventil / Pumpe", "Füllstandssensor", "Messumformer"),
+            "Druckregelung": ("Verdichter / Stellventil", "Drucksensor", "Druckmessumformer"),
+            "Durchflussregelung": ("Regelventil", "Durchflusssensor", "Durchflussmessumformer"),
+            "Position / Mechanik": ("Servoantrieb", "Positionsgeber", "Positionsmessumformer"),
+        }
+        stellglied, sensor, messglied = chain_presets[prozessart]
+        for key, value in {
+            "stellglied": stellglied, "sensor": sensor, "messglied": messglied
+        }.items():
+            config[key] = value
+            st.session_state[f"wirkplan_{key}"] = value
+
     return config
 
 
@@ -2722,15 +2989,6 @@ def render_real_process_inputs(config: dict):
     )
     tiefe = config["eingabetiefe"]
     prozessart = config["prozessart"]
-
-    if prozessart not in {
-        "Temperaturregelung", "Drehzahlregelung", "Füllstandsregelung"
-    }:
-        st.info(
-            "Reale Berechnungsmodelle sind in dieser ersten Ausbaustufe für Temperatur, "
-            "Drehzahl und Füllstand verfügbar. Diese Prozessart verwendet weiterhin das Preset."
-        )
-        return config
 
     def number(key, label, minimum, step, help_text=None, fmt=None):
         kwargs = {
@@ -2842,6 +3100,35 @@ def render_real_process_inputs(config: dict):
                 "Ein höhenabhängiger freier Auslauf folgt in einer späteren Ausbaustufe."
             )
 
+    elif prozessart == "Druckregelung":
+        number("druck_volumen_m3", "Speichervolumen [m³]", 0.001, 0.1, fmt="%.3f")
+        number("druck_max_bar", "Maximaldruck [bar]", 0.01, 0.5)
+        number("druck_soll_bar", "Solldruck [bar]", 0.0, 0.1)
+        number("druck_foerderstrom_m3h", "maximaler Förderstrom [m³/h]", 0.001, 1.0)
+        if tiefe in ["Erweitert", "Experte"]:
+            number("druck_verbrauch_m3h", "Grundverbrauch [m³/h]", 0.0, 1.0)
+        if tiefe == "Experte":
+            number("druck_zeitkonstante_s", "minimale Anlagenzeitkonstante [s]", 0.05, 0.1)
+
+    elif prozessart == "Durchflussregelung":
+        number("flow_max_m3h", "maximaler Durchfluss [m³/h]", 0.001, 1.0)
+        number("flow_soll_m3h", "Solldurchfluss [m³/h]", 0.0, 1.0)
+        number("flow_ventilzeit_s", "Ventil-Stellzeit [s]", 0.01, 0.1)
+        if tiefe in ["Erweitert", "Experte"]:
+            number("flow_rohrlaenge_m", "Rohrlänge [m]", 0.0, 1.0)
+            number("flow_durchmesser_mm", "Rohr-Innendurchmesser [mm]", 1.0, 5.0)
+        if tiefe == "Experte":
+            number("flow_druckverlust_bar", "Druckverlust bei Nennfluss [bar]", 0.0, 0.1)
+
+    elif prozessart == "Position / Mechanik":
+        number("pos_masse_kg", "bewegte Masse [kg]", 0.001, 1.0)
+        number("pos_stellkraft_n", "maximale Stellkraft [N]", 0.001, 50.0)
+        number("pos_hub_mm", "maximaler Hub [mm]", 0.001, 10.0)
+        number("pos_soll_mm", "Sollposition [mm]", 0.0, 10.0)
+        if tiefe in ["Erweitert", "Experte"]:
+            number("pos_feder_n_m", "Federsteifigkeit [N/m]", 0.001, 100.0)
+            number("pos_daempfung_ns_m", "Dämpfung [N·s/m]", 0.0, 10.0)
+
     return config
 
 
@@ -2913,6 +3200,19 @@ def render_wirkplan_builder():
                 key="wirkplan_regelgroesse"
             )
 
+            config["stellglied"] = st.text_input(
+                "Stellglied", value=config["stellglied"], key="wirkplan_stellglied"
+            )
+            config["sensor"] = st.text_input(
+                "Sensor", value=config["sensor"], key="wirkplan_sensor"
+            )
+            config["messglied"] = st.text_input(
+                "Messumformer / Messglied", value=config["messglied"], key="wirkplan_messglied"
+            )
+            config["sollwertgeber"] = st.text_input(
+                "Sollwertgeber", value=config["sollwertgeber"], key="wirkplan_sollwertgeber"
+            )
+
         with st.expander("2. Reale Anlagendaten", expanded=True):
             config = render_real_process_inputs(config)
 
@@ -2938,7 +3238,49 @@ def render_wirkplan_builder():
                 key="wirkplan_abweichung"
             )
 
-        with st.expander("4. Störeinflüsse", expanded=False):
+            config["totzeit_s"] = st.number_input(
+                "Totzeit [s]", min_value=0.0, value=float(config["totzeit_s"]),
+                step=0.1, key="wirkplan_totzeit_s"
+            )
+            limit_left, limit_right = st.columns(2)
+            with limit_left:
+                config["stellgroesse_min"] = st.number_input(
+                    "Stellgröße min.", value=float(config["stellgroesse_min"]),
+                    step=1.0, key="wirkplan_stellgroesse_min"
+                )
+            with limit_right:
+                config["stellgroesse_max"] = st.number_input(
+                    "Stellgröße max.", value=float(config["stellgroesse_max"]),
+                    step=1.0, key="wirkplan_stellgroesse_max"
+                )
+            config["stellrate_max"] = st.number_input(
+                "Maximale Stellrate [Einheit/s]", min_value=0.001,
+                value=float(config["stellrate_max"]), step=1.0, key="wirkplan_stellrate_max"
+            )
+
+        with st.expander("4. Messkette", expanded=False):
+            mess_left, mess_right = st.columns(2)
+            with mess_left:
+                config["messbereich_min"] = st.number_input(
+                    "Messbereich min.", value=float(config["messbereich_min"]),
+                    step=1.0, key="wirkplan_messbereich_min"
+                )
+                config["sensor_zeitkonstante_s"] = st.number_input(
+                    "Sensor-Zeitkonstante [s]", min_value=0.0,
+                    value=float(config["sensor_zeitkonstante_s"]), step=0.1,
+                    key="wirkplan_sensor_zeitkonstante_s"
+                )
+            with mess_right:
+                config["messbereich_max"] = st.number_input(
+                    "Messbereich max.", value=float(config["messbereich_max"]),
+                    step=1.0, key="wirkplan_messbereich_max"
+                )
+                config["messrauschen"] = st.number_input(
+                    "Messrauschen (±)", min_value=0.0, value=float(config["messrauschen"]),
+                    step=0.01, key="wirkplan_messrauschen"
+                )
+
+        with st.expander("5. Störeinflüsse", expanded=False):
             config["stoerungen_relevant"] = st.selectbox(
                 "Gibt es relevante Störungen?",
                 ["Ja", "Nein"],
@@ -2952,10 +3294,57 @@ def render_wirkplan_builder():
                     value=config["stoergroesse"],
                     key="wirkplan_stoergroesse"
                 )
+                config["stoerort"] = st.selectbox(
+                    "Eingriffsort", ["Vor der Strecke", "Am Ausgang"],
+                    index=["Vor der Strecke", "Am Ausgang"].index(config["stoerort"]),
+                    key="wirkplan_stoerort"
+                )
+                config["stoerzeit_s"] = st.number_input(
+                    "Störzeitpunkt [s]", min_value=0.0, value=float(config["stoerzeit_s"]),
+                    step=0.5, key="wirkplan_stoerzeit_s"
+                )
+                config["stoerwert"] = st.number_input(
+                    "Störsprung", value=float(config["stoerwert"]),
+                    step=0.1, key="wirkplan_stoerwert"
+                )
             else:
                 config["stoergroesse"] = "keine relevante Störung"
 
+        with st.expander("6. Regler- und Modell-Auslegung", expanded=False):
+            config["auslegung"] = st.radio(
+                "Auslegungsmodus", ["Automatisch", "Manuell"], horizontal=True,
+                index=["Automatisch", "Manuell"].index(config["auslegung"]),
+                key="wirkplan_auslegung"
+            )
+            if config["auslegung"] == "Manuell":
+                config["man_controller_type"] = st.selectbox(
+                    "Reglertyp", ["P", "PI", "PID"],
+                    index=["P", "PI", "PID"].index(config["man_controller_type"]),
+                    key="wirkplan_man_controller_type"
+                )
+                config["man_plant_type"] = st.selectbox(
+                    "Streckentyp", ["PT1", "PT2"],
+                    index=["PT1", "PT2"].index(config["man_plant_type"]),
+                    key="wirkplan_man_plant_type"
+                )
+                for key, label, minimum, step in [
+                    ("man_kp", "Kp", 0.0, 0.1), ("man_ki", "Ki", 0.0, 0.1),
+                    ("man_kd", "Kd", 0.0, 0.1), ("man_ks", "Ks", 0.000001, 0.1),
+                    ("man_ts", "Ts [s]", 0.000001, 0.1), ("man_zeta", "Dämpfungsgrad ζ", 0.01, 0.05),
+                    ("man_omega0", "Eigenkreisfrequenz ω0 [rad/s]", 0.000001, 0.1),
+                    ("man_setpoint", "Sollwert", -1000000.0, 0.1),
+                    ("man_t_end", "Simulationsdauer [s]", 0.1, 1.0),
+                    ("man_dt", "Zeitschritt dt [s]", 0.0001, 0.001),
+                ]:
+                    config[key] = st.number_input(
+                        label, min_value=float(minimum), value=float(config[key]),
+                        step=float(step), key=f"wirkplan_{key}"
+                    )
+
         st.session_state.wirkplan_config = config
+        validation_errors = validate_wirkplan_config(config)
+        for validation_error in validation_errors:
+            st.error(validation_error)
 
         derived = derive_controller_from_wirkplan(config)
         physical = derived.get("physical", {})
@@ -2976,7 +3365,11 @@ def render_wirkplan_builder():
         st.write(f"- ζ = {derived['zeta']}")
         st.write(f"- ω0 = {derived['omega0']}")
 
-        if st.button("Wirkplan übernehmen und Simulation berechnen", type="primary"):
+        if st.button(
+            "Wirkplan übernehmen und Simulation berechnen",
+            type="primary",
+            disabled=bool(validation_errors),
+        ):
             st.session_state.controller_type = derived["controller_type"]
             st.session_state.plant_type = derived["plant_type"]
             st.session_state.disturbance_position = derived["disturbance_position"]
