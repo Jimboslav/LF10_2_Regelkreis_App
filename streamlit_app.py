@@ -385,6 +385,37 @@ if "wirkplan_config" not in st.session_state:
         "ueberschwingen_zulaessig": "Nein",
         "bleibende_abweichung_erlaubt": "Nein",
         "stoerungen_relevant": "Ja",
+        "reale_daten_aktiv": True,
+        "eingabetiefe": "Einfach",
+        # Temperaturstrecke
+        "temp_medium": "Wasser",
+        "temp_volumen_m3": 1.0,
+        "temp_heizleistung_kw": 12.0,
+        "temp_umgebung_c": 15.0,
+        "temp_soll_c": 55.0,
+        "temp_waermeverlust_w_k": 180.0,
+        "temp_wirkungsgrad": 0.95,
+        "temp_dichte_kg_m3": 998.0,
+        "temp_cp_kj_kgk": 4.18,
+        # Drehzahlstrecke
+        "motor_leistung_kw": 5.5,
+        "motor_nenndrehzahl_rpm": 1450.0,
+        "motor_soll_rpm": 1200.0,
+        "motor_hochlaufzeit_s": 5.0,
+        "motor_leitung_m": 50.0,
+        "motor_querschnitt_mm2": 2.5,
+        "motor_spannung_v": 400.0,
+        "motor_wirkungsgrad": 0.88,
+        "motor_leistungsfaktor": 0.82,
+        "motor_traegheit_kgm2": 0.18,
+        "motor_lastmoment_nm": 20.0,
+        # Füllstandsstrecke
+        "tank_form": "Zylindrisch",
+        "tank_volumen_m3": 2.5,
+        "tank_hoehe_m": 2.0,
+        "tank_zulauf_m3h": 8.0,
+        "tank_abfluss_m3h": 3.0,
+        "tank_soll_m": 1.4,
     }
 
 
@@ -464,6 +495,8 @@ def simulate_control_loop(
     disturbance_position: str,
     disturbance_time: float,
     disturbance_value: float,
+    u_min=None,
+    u_max=None,
 ):
     t = np.arange(0.0, t_end + dt, dt)
 
@@ -488,6 +521,8 @@ def simulate_control_loop(
 
         p_part = kp * error[k]
 
+        previous_integral = integral_error
+
         if controller_type in ["PI", "PID"]:
             integral_error += error[k] * dt
         else:
@@ -500,7 +535,31 @@ def simulate_control_loop(
         else:
             d_part = 0.0
 
-        u_controller[k] = p_part + i_part + d_part
+        raw_output = p_part + i_part + d_part
+        limited_output = raw_output
+        if u_min is not None:
+            limited_output = max(float(u_min), limited_output)
+        if u_max is not None:
+            limited_output = min(float(u_max), limited_output)
+
+        # Einfaches Anti-Windup: Wenn die Begrenzung aktiv ist und der Fehler
+        # weiter in die Sättigung treibt, wird der letzte Integrationsschritt verworfen.
+        if limited_output != raw_output and controller_type in ["PI", "PID"]:
+            drives_further_into_limit = (
+                (u_max is not None and raw_output > float(u_max) and error[k] > 0)
+                or (u_min is not None and raw_output < float(u_min) and error[k] < 0)
+            )
+            if drives_further_into_limit:
+                integral_error = previous_integral
+                i_part = ki * integral_error
+                raw_output = p_part + i_part + d_part
+                limited_output = raw_output
+                if u_min is not None:
+                    limited_output = max(float(u_min), limited_output)
+                if u_max is not None:
+                    limited_output = min(float(u_max), limited_output)
+
+        u_controller[k] = limited_output
         previous_error = error[k]
 
         if disturbance_position == "Vor der Strecke":
@@ -1977,6 +2036,274 @@ def render_visual_builder():
 # Physikalischer Wirkplan-Builder
 # ------------------------------------------------------------
 
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, float(value)))
+
+
+def ensure_real_process_defaults(config: dict):
+    """Ergänzt neue Felder auch in bereits laufenden Streamlit-Sitzungen."""
+    defaults = {
+        "reale_daten_aktiv": True,
+        "eingabetiefe": "Einfach",
+        "temp_medium": "Wasser",
+        "temp_volumen_m3": 1.0,
+        "temp_heizleistung_kw": 12.0,
+        "temp_umgebung_c": 15.0,
+        "temp_soll_c": 55.0,
+        "temp_waermeverlust_w_k": 180.0,
+        "temp_wirkungsgrad": 0.95,
+        "temp_dichte_kg_m3": 998.0,
+        "temp_cp_kj_kgk": 4.18,
+        "motor_leistung_kw": 5.5,
+        "motor_nenndrehzahl_rpm": 1450.0,
+        "motor_soll_rpm": 1200.0,
+        "motor_hochlaufzeit_s": 5.0,
+        "motor_leitung_m": 50.0,
+        "motor_querschnitt_mm2": 2.5,
+        "motor_spannung_v": 400.0,
+        "motor_wirkungsgrad": 0.88,
+        "motor_leistungsfaktor": 0.82,
+        "motor_traegheit_kgm2": 0.18,
+        "motor_lastmoment_nm": 20.0,
+        "tank_form": "Zylindrisch",
+        "tank_volumen_m3": 2.5,
+        "tank_hoehe_m": 2.0,
+        "tank_zulauf_m3h": 8.0,
+        "tank_abfluss_m3h": 3.0,
+        "tank_soll_m": 1.4,
+    }
+    for key, value in defaults.items():
+        config.setdefault(key, value)
+    return config
+
+
+def calculate_real_process_data(config: dict):
+    """Berechnet aus realen Anlagendaten ein nachvollziehbares PT1-Ersatzmodell."""
+    prozessart = config["prozessart"]
+    result = {
+        "active": bool(config.get("reale_daten_aktiv", True)),
+        "supported": prozessart in {
+            "Temperaturregelung", "Drehzahlregelung", "Füllstandsregelung"
+        },
+        "metrics": [],
+        "warnings": [],
+        "node_details": {},
+        "begruendung": [],
+    }
+
+    if not result["active"] or not result["supported"]:
+        return result
+
+    if prozessart == "Temperaturregelung":
+        medium = config.get("temp_medium", "Wasser")
+        stoffwerte = {
+            "Wasser": (998.0, 4.18),
+            "Luft": (1.204, 1.005),
+        }
+        if medium in stoffwerte:
+            dichte, cp = stoffwerte[medium]
+        else:
+            dichte = max(float(config.get("temp_dichte_kg_m3", 998.0)), 0.001)
+            cp = max(float(config.get("temp_cp_kj_kgk", 4.18)), 0.001)
+
+        volumen = max(float(config.get("temp_volumen_m3", 1.0)), 0.001)
+        heizleistung_kw = max(float(config.get("temp_heizleistung_kw", 12.0)), 0.001)
+        wirkungsgrad = _clamp(config.get("temp_wirkungsgrad", 0.95), 0.01, 1.0)
+        waermeverlust = max(float(config.get("temp_waermeverlust_w_k", 180.0)), 0.1)
+        umgebung = float(config.get("temp_umgebung_c", 15.0))
+        solltemperatur = float(config.get("temp_soll_c", 55.0))
+
+        masse = volumen * dichte
+        waermekapazitaet_j_k = masse * cp * 1000.0
+        wirksame_heizleistung_w = heizleistung_kw * 1000.0 * wirkungsgrad
+        zeitkonstante_s = waermekapazitaet_j_k / waermeverlust
+        max_delta_t = wirksame_heizleistung_w / waermeverlust
+        soll_delta_t = max(0.1, solltemperatur - umgebung)
+        anfangssteigung_k_min = wirksame_heizleistung_w / waermekapazitaet_j_k * 60.0
+
+        if soll_delta_t > max_delta_t:
+            result["warnings"].append(
+                "Die gewünschte Temperatur ist mit der eingetragenen Heizleistung und "
+                "dem Wärmeverlust im stationären Zustand nicht erreichbar."
+            )
+        if medium == "Luft":
+            result["warnings"].append(
+                "Bei Räumen speichert nicht nur die Luft Wärme. Für ein genaueres Modell "
+                "müssen Wände, Einrichtung und Gebäudemasse als äquivalente Masse ergänzt werden."
+            )
+
+        result.update({
+            "ks": max_delta_t / 100.0,
+            "ts": _clamp(zeitkonstante_s, 0.1, 500000.0),
+            "setpoint": soll_delta_t,
+            "t_end": _clamp(5.0 * zeitkonstante_s, 30.0, 1000000.0),
+            "disturbance_value": -10.0,
+            "input_unit": "% Heizleistung",
+            "output_unit": "K Temperaturerhöhung",
+            "model_note": (
+                "Die Simulation regelt die Temperaturerhöhung ΔT gegenüber der "
+                f"Umgebungstemperatur {umgebung:.1f} °C."
+            ),
+        })
+        result["metrics"] = [
+            ("Masse", f"{masse:.1f} kg"),
+            ("Wärmekapazität", f"{waermekapazitaet_j_k / 1e6:.2f} MJ/K"),
+            ("Zeitkonstante", f"{zeitkonstante_s / 60.0:.1f} min"),
+            ("Anfangssteigung", f"{anfangssteigung_k_min:.3f} K/min"),
+            ("max. ΔT", f"{max_delta_t:.1f} K"),
+            ("Sollwert ΔT", f"{soll_delta_t:.1f} K"),
+        ]
+        result["node_details"] = {
+            "stellgroesse": f"Heizung {heizleistung_kw:.1f} kW",
+            "prozessglied": f"{medium}, η = {wirkungsgrad * 100:.0f} %",
+            "speicher": f"{volumen:.2f} m³ / {masse:.0f} kg",
+            "regelgroesse": f"{solltemperatur:.1f} °C (ΔT {soll_delta_t:.1f} K)",
+        }
+        result["begruendung"].append(
+            "Die thermische Zeitkonstante folgt aus Wärmekapazität geteilt durch Wärmeverlustkoeffizient."
+        )
+
+    elif prozessart == "Drehzahlregelung":
+        leistung_kw = max(float(config.get("motor_leistung_kw", 5.5)), 0.01)
+        nenndrehzahl = max(float(config.get("motor_nenndrehzahl_rpm", 1450.0)), 1.0)
+        solldrehzahl = _clamp(config.get("motor_soll_rpm", 1200.0), 0.0, nenndrehzahl)
+        hochlaufzeit = max(float(config.get("motor_hochlaufzeit_s", 5.0)), 0.1)
+        leitung = max(float(config.get("motor_leitung_m", 50.0)), 0.0)
+        querschnitt = max(float(config.get("motor_querschnitt_mm2", 2.5)), 0.1)
+        spannung = max(float(config.get("motor_spannung_v", 400.0)), 1.0)
+        wirkungsgrad = _clamp(config.get("motor_wirkungsgrad", 0.88), 0.1, 1.0)
+        cos_phi = _clamp(config.get("motor_leistungsfaktor", 0.82), 0.1, 1.0)
+        traegheit = max(float(config.get("motor_traegheit_kgm2", 0.18)), 0.0001)
+        lastmoment = max(float(config.get("motor_lastmoment_nm", 20.0)), 0.0)
+
+        nennmoment = 9550.0 * leistung_kw / nenndrehzahl
+        nennstrom = leistung_kw * 1000.0 / (
+            np.sqrt(3.0) * spannung * wirkungsgrad * cos_phi
+        )
+        spannungsfall = np.sqrt(3.0) * nennstrom * 0.0178 * leitung / querschnitt
+        spannungsfall_prozent = spannungsfall / spannung * 100.0
+        motorspannung = max(spannung - spannungsfall, 0.0)
+        momentfaktor = (motorspannung / spannung) ** 2
+        verfuegbares_moment = nennmoment * momentfaktor
+        beschleunigungsmoment = verfuegbares_moment - lastmoment
+        omega_n = 2.0 * np.pi * nenndrehzahl / 60.0
+
+        if beschleunigungsmoment > 0:
+            mechanische_hochlaufzeit = traegheit * omega_n / beschleunigungsmoment
+        else:
+            mechanische_hochlaufzeit = hochlaufzeit
+            result["warnings"].append(
+                "Das berechnete Motormoment ist nicht größer als das Lastmoment. "
+                "Ein sicherer Hochlauf ist mit diesen Angaben nicht nachgewiesen."
+            )
+        if spannungsfall_prozent > 3.0:
+            result["warnings"].append(
+                f"Der überschlägige Spannungsfall beträgt {spannungsfall_prozent:.1f} %. "
+                "Leitung, Verlegeart, Schutzorgan und Anlaufstrom müssen genauer geprüft werden."
+            )
+
+        pt1_zeit = max(hochlaufzeit, mechanische_hochlaufzeit) / 3.0
+        result.update({
+            "ks": nenndrehzahl / 100.0,
+            "ts": _clamp(pt1_zeit, 0.1, 500000.0),
+            "setpoint": solldrehzahl,
+            "t_end": max(20.0, 6.0 * pt1_zeit),
+            "disturbance_value": -10.0,
+            "input_unit": "% Ansteuerung",
+            "output_unit": "1/min",
+            "model_note": (
+                "Der Spannungsfall ist eine überschlägige Drehstromberechnung. "
+                "Bei Frequenzumrichterbetrieb sind zusätzlich Herstellerangaben zu Motorkabel, "
+                "Filter und EMV zu beachten."
+            ),
+        })
+        result["metrics"] = [
+            ("Nennmoment", f"{nennmoment:.1f} Nm"),
+            ("Nennstrom ca.", f"{nennstrom:.1f} A"),
+            ("Spannungsfall", f"{spannungsfall:.1f} V / {spannungsfall_prozent:.1f} %"),
+            ("Moment an Leitung", f"{verfuegbares_moment:.1f} Nm"),
+            ("mechan. Hochlauf", f"{mechanische_hochlaufzeit:.2f} s"),
+            ("PT1-Zeitkonstante", f"{pt1_zeit:.2f} s"),
+        ]
+        result["node_details"] = {
+            "stellgroesse": f"0–100 % / {spannung:.0f} V",
+            "prozessglied": f"Motor {leistung_kw:.1f} kW, Leitung {leitung:.0f} m",
+            "speicher": f"J = {traegheit:.3f} kg·m²",
+            "regelgroesse": f"Soll {solldrehzahl:.0f} 1/min",
+        }
+        result["begruendung"].append(
+            "Das Motormoment wird aus Leistung und Nenndrehzahl berechnet; die längere aus vorgegebener und mechanischer Hochlaufzeit bestimmt das PT1-Ersatzmodell."
+        )
+
+    elif prozessart == "Füllstandsregelung":
+        volumen = max(float(config.get("tank_volumen_m3", 2.5)), 0.001)
+        hoehe = max(float(config.get("tank_hoehe_m", 2.0)), 0.01)
+        zulauf = max(float(config.get("tank_zulauf_m3h", 8.0)), 0.001)
+        abfluss = max(float(config.get("tank_abfluss_m3h", 3.0)), 0.0)
+        soll = _clamp(config.get("tank_soll_m", 1.4), 0.0, hoehe)
+        querschnitt = volumen / hoehe
+        netto_zulauf = zulauf - abfluss
+
+        if netto_zulauf > 0:
+            vollfuellzeit_s = volumen / netto_zulauf * 3600.0
+            sollzeit_s = querschnitt * soll / netto_zulauf * 3600.0
+        else:
+            vollfuellzeit_s = volumen / zulauf * 3600.0
+            sollzeit_s = querschnitt * soll / zulauf * 3600.0
+            result["warnings"].append(
+                "Der maximale Zulauf ist nicht größer als der Abfluss. Der Sollfüllstand kann bei konstantem Abfluss nicht erreicht werden."
+            )
+
+        pt1_zeit = max(vollfuellzeit_s / 3.0, 0.1)
+        if config.get("tank_form") == "Zylindrisch":
+            durchmesser = 2.0 * np.sqrt(querschnitt / np.pi)
+            geometrie = f"Ø {durchmesser:.2f} m"
+        else:
+            durchmesser = None
+            geometrie = f"A = {querschnitt:.2f} m²"
+
+        result.update({
+            "ks": hoehe / 100.0,
+            "ts": _clamp(pt1_zeit, 0.1, 500000.0),
+            "setpoint": soll,
+            "t_end": _clamp(max(60.0, 5.0 * pt1_zeit), 60.0, 1000000.0),
+            "disturbance_value": -10.0 if abfluss > 0 else -5.0,
+            "input_unit": "% Zulauf",
+            "output_unit": "m Füllstand",
+            "model_note": (
+                "Ein Behälter ist physikalisch eine integrierende Strecke. Für das vorhandene "
+                "Regelkreis-Labor wird daraus zunächst ein PT1-Ersatzmodell gebildet."
+            ),
+        })
+        result["metrics"] = [
+            ("Querschnitt", f"{querschnitt:.3f} m²"),
+            ("Geometrie", geometrie),
+            ("Nettozulauf", f"{netto_zulauf:.2f} m³/h"),
+            ("Zeit bis Soll", f"{sollzeit_s / 60.0:.1f} min"),
+            ("Zeit bis voll", f"{vollfuellzeit_s / 60.0:.1f} min"),
+            ("PT1-Ersatzzeit", f"{pt1_zeit / 60.0:.1f} min"),
+        ]
+        result["node_details"] = {
+            "stellgroesse": f"Zulauf bis {zulauf:.1f} m³/h",
+            "prozessglied": f"Pumpe / Ventil, Abfluss {abfluss:.1f} m³/h",
+            "speicher": f"{volumen:.2f} m³ / {hoehe:.2f} m",
+            "regelgroesse": f"Soll {soll:.2f} m",
+        }
+        result["begruendung"].append(
+            "Querschnitt, Nettozulauf und Zielhöhe bestimmen die reale Füllzeit; daraus wird ein PT1-Ersatzmodell für die vorhandene Simulation abgeleitet."
+        )
+
+    if "ks" in result:
+        # Einfache, robuste IMC-nahe Startauslegung für ein PT1-Modell ohne Totzeit.
+        result["kp"] = _clamp(2.0 / max(result["ks"], 0.001), 0.001, 100.0)
+        result["ki"] = _clamp(result["kp"] / max(result["ts"], 0.1), 0.0, 100.0)
+        result["dt"] = _clamp(result["t_end"] / 5000.0, 0.01, 60.0)
+        result["u_min"] = 0.0
+        result["u_max"] = 100.0
+
+    return result
+
+
 def derive_controller_from_wirkplan(config: dict):
     prozessart = config["prozessart"]
     traegheit = config["traegheit"]
@@ -2094,7 +2421,29 @@ def derive_controller_from_wirkplan(config: dict):
             "Ein PID-Regler kann Überschwingen dämpfen und gleichzeitig stationäre Abweichungen verringern."
         )
 
-    if traegheit == "sehr träge":
+    physical = calculate_real_process_data(config)
+    result["physical"] = physical
+
+    uses_real_model = physical.get("active") and physical.get("supported") and "ks" in physical
+
+    if uses_real_model:
+        result["plant_type"] = "PT1"
+        result["controller_type"] = "PI"
+        result["kp"] = physical["kp"]
+        result["ki"] = physical["ki"]
+        result["kd"] = 0.0
+        result["ks"] = physical["ks"]
+        result["ts"] = physical["ts"]
+        result["setpoint"] = physical["setpoint"]
+        result["t_end"] = physical["t_end"]
+        result["dt"] = physical["dt"]
+        result["disturbance_value"] = physical["disturbance_value"]
+        result["begruendung"].extend(physical["begruendung"])
+        result["begruendung"].append(
+            "Strecken- und Reglerparameter werden aus den realen Anlagendaten statt nur aus einer qualitativen Einschätzung gebildet."
+        )
+
+    if not uses_real_model and traegheit == "sehr träge":
         result["ts"] *= 1.8
         result["t_end"] *= 1.5
         result["kp"] *= 0.8
@@ -2103,7 +2452,7 @@ def derive_controller_from_wirkplan(config: dict):
             "Da der Prozess als sehr träge bewertet wurde, werden die Startparameter vorsichtiger gewählt."
         )
 
-    elif traegheit == "schnell":
+    elif not uses_real_model and traegheit == "schnell":
         result["ts"] *= 0.5
         result["t_end"] *= 0.7
         result["kp"] *= 1.2
@@ -2131,8 +2480,12 @@ def derive_controller_from_wirkplan(config: dict):
 
     if stoerungen_relevant == "Ja":
         result["disturbance_position"] = "Vor der Strecke"
-        result["disturbance_time"] = min(10.0, result["t_end"] / 2)
-        result["disturbance_value"] = -0.3
+        if uses_real_model:
+            result["disturbance_time"] = result["t_end"] / 2
+        else:
+            result["disturbance_time"] = min(10.0, result["t_end"] / 2)
+        if not uses_real_model:
+            result["disturbance_value"] = -0.3
         result["begruendung"].append(
             "Da relevante Störungen auftreten, wird eine Laststörung vor der Strecke für die Simulation vorgeschlagen."
         )
@@ -2142,20 +2495,34 @@ def derive_controller_from_wirkplan(config: dict):
         result["disturbance_value"] = 0.0
 
     result["kp"] = round(float(result["kp"]), 3)
-    result["ki"] = round(float(result["ki"]), 3)
+    result["ki"] = round(float(result["ki"]), 8)
     result["kd"] = round(float(result["kd"]), 3)
+    result["ks"] = round(float(result["ks"]), 6)
     result["ts"] = round(float(result["ts"]), 3)
     result["t_end"] = round(float(result["t_end"]), 3)
+    result["dt"] = round(float(result["dt"]), 4)
+    result["setpoint"] = round(float(result["setpoint"]), 4)
+    result["disturbance_time"] = round(float(result["disturbance_time"]), 3)
+    result["disturbance_value"] = round(float(result["disturbance_value"]), 4)
 
     return result
 
 
 def build_wirkplan_flow(config: dict):
+    physical = calculate_real_process_data(config)
+    details = physical.get("node_details", {})
+
+    def node_content(title: str, config_value: str, detail_key: str) -> str:
+        detail = details.get(detail_key)
+        if detail:
+            return f"{title}<br>{config_value}<br><b>{detail}</b>"
+        return f"{title}<br>{config_value}"
+
     nodes = [
         StreamlitFlowNode(
             id="stellgroesse",
             pos=(0, 180),
-            data={"content": f"Stellgröße<br>{config['stellgroesse']}"},
+            data={"content": node_content("Stellgröße", config["stellgroesse"], "stellgroesse")},
             node_type="input",
             source_position="right",
             draggable=True
@@ -2163,7 +2530,7 @@ def build_wirkplan_flow(config: dict):
         StreamlitFlowNode(
             id="prozessglied",
             pos=(280, 180),
-            data={"content": f"Prozessglied<br>{config['prozessglied']}"},
+            data={"content": node_content("Prozessglied", config["prozessglied"], "prozessglied")},
             node_type="default",
             source_position="right",
             target_position="left",
@@ -2172,7 +2539,7 @@ def build_wirkplan_flow(config: dict):
         StreamlitFlowNode(
             id="speicher",
             pos=(580, 180),
-            data={"content": f"Speicher / Trägheit<br>{config['speicher']}"},
+            data={"content": node_content("Speicher / Trägheit", config["speicher"], "speicher")},
             node_type="default",
             source_position="right",
             target_position="left",
@@ -2181,7 +2548,7 @@ def build_wirkplan_flow(config: dict):
         StreamlitFlowNode(
             id="regelgroesse",
             pos=(880, 180),
-            data={"content": f"Regelgröße<br>{config['regelgroesse']}"},
+            data={"content": node_content("Regelgröße", config["regelgroesse"], "regelgroesse")},
             node_type="output",
             target_position="left",
             draggable=True
@@ -2332,6 +2699,152 @@ def update_wirkplan_defaults_for_process(config: dict):
     return config
 
 
+def render_real_process_inputs(config: dict):
+    """Zeigt nur die zur Prozessart und Eingabetiefe passenden realen Anlagendaten."""
+    config["reale_daten_aktiv"] = st.checkbox(
+        "Reale Anlagendaten für die Berechnung verwenden",
+        value=bool(config.get("reale_daten_aktiv", True)),
+        key="wirkplan_reale_daten_aktiv",
+    )
+
+    if not config["reale_daten_aktiv"]:
+        st.caption("Die App verwendet wieder die qualitativen Prozess-Presets.")
+        return config
+
+    config["eingabetiefe"] = st.selectbox(
+        "Eingabetiefe",
+        ["Einfach", "Erweitert", "Experte"],
+        index=["Einfach", "Erweitert", "Experte"].index(
+            config.get("eingabetiefe", "Einfach")
+        ),
+        key="wirkplan_eingabetiefe",
+        help="Ausgeblendete Detailwerte bleiben als gekennzeichnete Standardannahmen aktiv.",
+    )
+    tiefe = config["eingabetiefe"]
+    prozessart = config["prozessart"]
+
+    if prozessart not in {
+        "Temperaturregelung", "Drehzahlregelung", "Füllstandsregelung"
+    }:
+        st.info(
+            "Reale Berechnungsmodelle sind in dieser ersten Ausbaustufe für Temperatur, "
+            "Drehzahl und Füllstand verfügbar. Diese Prozessart verwendet weiterhin das Preset."
+        )
+        return config
+
+    def number(key, label, minimum, step, help_text=None, fmt=None):
+        kwargs = {
+            "label": label,
+            "min_value": float(minimum),
+            "value": float(config[key]),
+            "step": float(step),
+            "key": f"wirkplan_{key}",
+            "help": help_text,
+        }
+        if fmt is not None:
+            kwargs["format"] = fmt
+        config[key] = st.number_input(**kwargs)
+
+    if prozessart == "Temperaturregelung":
+        config["temp_medium"] = st.selectbox(
+            "Medium",
+            ["Wasser", "Luft", "Benutzerdefiniert"],
+            index=["Wasser", "Luft", "Benutzerdefiniert"].index(
+                config.get("temp_medium", "Wasser")
+            ),
+            key="wirkplan_temp_medium",
+        )
+        number("temp_volumen_m3", "Volumen [m³]", 0.001, 0.1, fmt="%.3f")
+        number("temp_heizleistung_kw", "Heizleistung [kW]", 0.001, 0.5, fmt="%.3f")
+        number("temp_umgebung_c", "Umgebungstemperatur [°C]", -100.0, 1.0)
+        number("temp_soll_c", "Solltemperatur [°C]", -100.0, 1.0)
+
+        if tiefe in ["Erweitert", "Experte"]:
+            number(
+                "temp_waermeverlust_w_k",
+                "Wärmeverlustkoeffizient [W/K]",
+                0.1,
+                10.0,
+                "Wärmeleistung, die je Kelvin Temperaturdifferenz an die Umgebung verloren geht.",
+            )
+        else:
+            st.caption(
+                f"Annahme: Wärmeverlustkoeffizient {config['temp_waermeverlust_w_k']:.0f} W/K."
+            )
+
+        if tiefe == "Experte":
+            number("temp_wirkungsgrad", "Wirkungsgrad [0–1]", 0.01, 0.01, fmt="%.2f")
+            if config["temp_medium"] == "Benutzerdefiniert":
+                number("temp_dichte_kg_m3", "Dichte [kg/m³]", 0.001, 1.0, fmt="%.3f")
+                number(
+                    "temp_cp_kj_kgk",
+                    "spezifische Wärmekapazität [kJ/(kg·K)]",
+                    0.001,
+                    0.01,
+                    fmt="%.3f",
+                )
+        else:
+            st.caption(f"Annahme: thermischer Wirkungsgrad {config['temp_wirkungsgrad'] * 100:.0f} %.")
+
+    elif prozessart == "Drehzahlregelung":
+        number("motor_leistung_kw", "Motorleistung [kW]", 0.01, 0.1)
+        number("motor_nenndrehzahl_rpm", "Nenndrehzahl [1/min]", 1.0, 10.0)
+        number("motor_soll_rpm", "Solldrehzahl [1/min]", 0.0, 10.0)
+        number("motor_hochlaufzeit_s", "vorgegebene Hochlaufzeit [s]", 0.1, 0.5)
+
+        if tiefe in ["Erweitert", "Experte"]:
+            number("motor_leitung_m", "Motorleitung – einfache Länge [m]", 0.0, 5.0)
+            number("motor_querschnitt_mm2", "Leiterquerschnitt [mm²]", 0.1, 0.5)
+        else:
+            st.caption(
+                f"Annahme: {config['motor_leitung_m']:.0f} m Motorleitung mit "
+                f"{config['motor_querschnitt_mm2']:.1f} mm² Cu."
+            )
+
+        if tiefe == "Experte":
+            number("motor_spannung_v", "Drehspannung [V]", 1.0, 10.0)
+            number("motor_wirkungsgrad", "Wirkungsgrad η [0–1]", 0.1, 0.01, fmt="%.2f")
+            number("motor_leistungsfaktor", "Leistungsfaktor cos φ [0–1]", 0.1, 0.01, fmt="%.2f")
+            number("motor_traegheit_kgm2", "Gesamtträgheitsmoment J [kg·m²]", 0.0001, 0.01, fmt="%.4f")
+            number("motor_lastmoment_nm", "Lastmoment [Nm]", 0.0, 1.0)
+        else:
+            st.caption(
+                f"Annahmen: η {config['motor_wirkungsgrad']:.2f}, cos φ "
+                f"{config['motor_leistungsfaktor']:.2f}, J {config['motor_traegheit_kgm2']:.3f} kg·m², "
+                f"Lastmoment {config['motor_lastmoment_nm']:.1f} Nm."
+            )
+
+    elif prozessart == "Füllstandsregelung":
+        number("tank_volumen_m3", "Behältervolumen [m³]", 0.001, 0.1, fmt="%.3f")
+        number("tank_hoehe_m", "maximale Füllhöhe [m]", 0.01, 0.1)
+        number("tank_zulauf_m3h", "maximaler Zulauf [m³/h]", 0.001, 0.5, fmt="%.3f")
+        number("tank_soll_m", "Sollfüllstand [m]", 0.0, 0.1)
+
+        if tiefe in ["Erweitert", "Experte"]:
+            config["tank_form"] = st.selectbox(
+                "Behälterform",
+                ["Zylindrisch", "Rechteckig"],
+                index=["Zylindrisch", "Rechteckig"].index(
+                    config.get("tank_form", "Zylindrisch")
+                ),
+                key="wirkplan_tank_form",
+            )
+            number("tank_abfluss_m3h", "konstanter Abfluss [m³/h]", 0.0, 0.5)
+        else:
+            st.caption(
+                f"Annahme: {config['tank_form'].lower()}er Behälter und "
+                f"{config['tank_abfluss_m3h']:.1f} m³/h konstanter Abfluss."
+            )
+
+        if tiefe == "Experte":
+            st.caption(
+                "Das Modell verwendet aktuell einen konstanten Querschnitt und konstanten Abfluss. "
+                "Ein höhenabhängiger freier Auslauf folgt in einer späteren Ausbaustufe."
+            )
+
+    return config
+
+
 def render_wirkplan_builder():
     st.title("Physikalischer Wirkplan-Builder")
 
@@ -2340,7 +2853,7 @@ def render_wirkplan_builder():
         "Aus dem Wirkplan leitet die App ein geeignetes Streckenmodell und einen Startregler ab."
     )
 
-    config = st.session_state.wirkplan_config
+    config = ensure_real_process_defaults(st.session_state.wirkplan_config)
 
     col_left, col_right = st.columns([1, 2])
 
@@ -2400,7 +2913,10 @@ def render_wirkplan_builder():
                 key="wirkplan_regelgroesse"
             )
 
-        with st.expander("2. Verhalten des Prozesses", expanded=True):
+        with st.expander("2. Reale Anlagendaten", expanded=True):
+            config = render_real_process_inputs(config)
+
+        with st.expander("3. Verhalten des Prozesses", expanded=False):
             config["traegheit"] = st.selectbox(
                 "Wie träge ist der Prozess?",
                 ["schnell", "mittel", "träge", "sehr träge"],
@@ -2422,7 +2938,7 @@ def render_wirkplan_builder():
                 key="wirkplan_abweichung"
             )
 
-        with st.expander("3. Störeinflüsse", expanded=True):
+        with st.expander("4. Störeinflüsse", expanded=False):
             config["stoerungen_relevant"] = st.selectbox(
                 "Gibt es relevante Störungen?",
                 ["Ja", "Nein"],
@@ -2442,6 +2958,7 @@ def render_wirkplan_builder():
         st.session_state.wirkplan_config = config
 
         derived = derive_controller_from_wirkplan(config)
+        physical = derived.get("physical", {})
 
         st.divider()
 
@@ -2483,6 +3000,8 @@ def render_wirkplan_builder():
                 "dt": derived["dt"],
                 "disturbance_time": derived["disturbance_time"],
                 "disturbance_value": derived["disturbance_value"],
+                "u_min": physical.get("u_min") if physical.get("active") else None,
+                "u_max": physical.get("u_max") if physical.get("active") else None,
             }
 
             st.session_state.builder_config = st.session_state.defaults.copy()
@@ -2510,6 +3029,21 @@ def render_wirkplan_builder():
         )
 
         derived = derive_controller_from_wirkplan(config)
+        physical = derived.get("physical", {})
+
+        if physical.get("active") and physical.get("supported"):
+            st.subheader("Berechnete Anlagenkennwerte")
+            metrics = physical.get("metrics", [])
+            for start in range(0, len(metrics), 3):
+                columns = st.columns(3)
+                for column, (label, value) in zip(columns, metrics[start:start + 3]):
+                    column.metric(label, value)
+
+            if physical.get("model_note"):
+                st.info(physical["model_note"])
+
+            for warning in physical.get("warnings", []):
+                st.warning(warning)
 
         st.subheader("Begründung der Ableitung")
 
@@ -2595,7 +3129,8 @@ with st.sidebar:
                 min_value=0.0,
                 max_value=100.0,
                 value=float(defaults["ki"]),
-                step=0.1,
+                step=0.001,
+                format="%.6f",
                 help="Ki baut eine bleibende Regelabweichung über die Zeit ab."
             )
         else:
@@ -2619,18 +3154,25 @@ with st.sidebar:
 
         ks = st.number_input(
             "Ks - Streckenverstärkung",
-            min_value=0.1,
+            min_value=0.000001,
             max_value=100.0,
             value=float(defaults["ks"]),
-            step=0.1,
+            step=0.01,
+            format="%.6f",
             help="Ks beschreibt, wie stark die Strecke auf die Stellgröße reagiert."
         )
+
+        if defaults.get("u_min") is not None and defaults.get("u_max") is not None:
+            st.caption(
+                f"Reales Stellglied aktiv: Stellgröße wird auf "
+                f"{defaults['u_min']:.0f} bis {defaults['u_max']:.0f} % begrenzt."
+            )
 
         if plant_type == "PT1":
             ts = st.number_input(
                 "Ts - Zeitkonstante PT1 [s]",
                 min_value=0.1,
-                max_value=100.0,
+                max_value=500000.0,
                 value=float(defaults["ts"]),
                 step=0.1,
                 help="Ts beschreibt die Trägheit der PT1-Strecke."
@@ -2676,7 +3218,7 @@ with st.sidebar:
         t_end = st.number_input(
             "Simulationsdauer [s]",
             min_value=1.0,
-            max_value=200.0,
+            max_value=1000000.0,
             value=float(defaults["t_end"]),
             step=1.0
         )
@@ -2685,7 +3227,7 @@ with st.sidebar:
             dt = st.number_input(
                 "Schrittweite dt [s]",
                 min_value=0.001,
-                max_value=1.0,
+                max_value=60.0,
                 value=float(defaults["dt"]),
                 step=0.001,
                 format="%.3f",
@@ -2699,7 +3241,7 @@ with st.sidebar:
             disturbance_time = st.number_input(
                 "Störung ab Zeitpunkt [s]",
                 min_value=0.0,
-                max_value=200.0,
+                max_value=float(max(200.0, t_end)),
                 value=float(defaults["disturbance_time"]),
                 step=0.5
             )
@@ -2746,6 +3288,8 @@ df = simulate_control_loop(
     disturbance_position=disturbance_position,
     disturbance_time=disturbance_time,
     disturbance_value=disturbance_value,
+    u_min=defaults.get("u_min"),
+    u_max=defaults.get("u_max"),
 )
 
 
@@ -2919,3 +3463,4 @@ with st.expander("Technische Einordnung"):
         {disturbance_position}
         """
     )
+
