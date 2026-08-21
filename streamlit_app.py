@@ -161,13 +161,48 @@ if "active_view" not in st.session_state:
 # Obere Navigation
 # ------------------------------------------------------------
 
+st.markdown(
+    """
+    <style>
+    /* Der äußere Element-Wrapper ist entscheidend: Würde nur der innere
+       Streamlit-Container fixiert, begrenzte ihn sein Wrapper auf dessen Höhe. */
+    [data-testid="stElementContainer"]:has(.st-key-top_navigation) {
+        position: sticky;
+        top: 0.5rem;
+        z-index: 1000;
+        background-color: var(--background-color, #ffffff);
+        border-radius: 0.65rem;
+        box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.12);
+    }
+
+    .st-key-top_navigation {
+        position: sticky;
+        top: 0.5rem;
+        z-index: 1000;
+        background-color: var(--background-color, #ffffff);
+        border-radius: 0.65rem;
+    }
+
+    @media (max-width: 768px) {
+        [data-testid="stElementContainer"]:has(.st-key-top_navigation),
+        .st-key-top_navigation {
+            top: 0;
+            border-radius: 0;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 def render_top_navigation():
     """
     Horizontale Arbeitsbereich-Navigation oberhalb der App.
     Diese Navigation wird auf jeder Ansicht angezeigt.
     """
 
-    with st.container(border=True):
+    with st.container(border=True, key="top_navigation"):
         col1, col2, col3, col4 = st.columns([1.2, 1.6, 1.7, 1.5])
 
         with col1:
