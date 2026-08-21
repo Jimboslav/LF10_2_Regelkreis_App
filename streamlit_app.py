@@ -8,6 +8,135 @@ from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
 from streamlit_flow.state import StreamlitFlowState
 
 
+def _praxis_variant(
+    model, controlled, process, storage, disturbance, actuators, strategies,
+    inertia="mittel", overshoot="Nein", offset="Nein", disturbances="Ja",
+):
+    """Kompakte Definition einer praxisnahen Regelungsvariante."""
+    return {
+        "model": model,
+        "controlled": controlled,
+        "process": process,
+        "storage": storage,
+        "disturbance": disturbance,
+        "actuators": actuators,
+        "strategies": strategies,
+        "inertia": inertia,
+        "overshoot": overshoot,
+        "offset": offset,
+        "disturbances": disturbances,
+    }
+
+
+_PI = ["Automatische Empfehlung", "P", "PI", "PID"]
+_TEMP = ["Automatische Empfehlung", "PI", "PID", "Kaskade", "Zweipunkt"]
+_STAGES = ["Automatische Empfehlung", "PI", "Stufen-/Kaskadensteuerung"]
+_AIR = ["Ventilator ohne FU", "Ventilator mit FU", "EC-Ventilator", "VAV-Klappe"]
+_PUMP = ["Pumpe ohne FU", "Pumpe mit FU", "EC-Pumpe", "Regelventil"]
+_VALVE = ["2-Wege-Regelventil", "3-Wege-Mischventil", "Motorventil", "Magnetventil"]
+_MOTOR = ["Motor ohne FU", "Motor mit FU", "EC-Motor", "Servoantrieb"]
+
+
+PRACTICAL_PROCESS_CATALOG = {
+    "RLT / Lüftung": {
+        "Zulufttemperatur": _praxis_variant("Temperaturregelung", "Zulufttemperatur [°C]", "Heiz-/Kühlregister", "Luft- und Registermasse", "Außenluft / Last", _VALVE, _TEMP, "mittel"),
+        "Raum- oder Ablufttemperatur": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "RLT-Anlage / Raum", "Gebäudemasse", "Außentemperatur / interne Last", _VALVE + _AIR, _TEMP, "sehr träge"),
+        "Kanal-Differenzdruck": _praxis_variant("Druckregelung", "Differenzdruck [Pa]", "Ventilator / Kanalnetz", "kompressibles Luftvolumen", "Klappen- und VAV-Stellung", _AIR, _PI, "schnell"),
+        "Volumenstrom": _praxis_variant("Durchflussregelung", "Luftvolumenstrom [m³/h]", "Ventilator / Kanal", "Kanalvolumen", "Filterverschmutzung / Klappen", _AIR, _PI, "schnell"),
+        "CO₂ / Luftqualität": _praxis_variant("Generische Prozessstrecke", "CO₂-Konzentration [ppm]", "Außenluftzufuhr / Raum", "Raumluftvolumen", "Personenbelegung", _AIR, ["Automatische Empfehlung", "PI", "Kaskade"], "sehr träge"),
+        "Raum- oder Zuluftfeuchte": _praxis_variant("Generische Prozessstrecke", "relative Feuchte [% r. F.]", "Befeuchter / Entfeuchter", "Feuchtespeicherung", "Außenluft / Feuchtelast", ["Dampfbefeuchter", "Sprühbefeuchter", "Kühlregister", "Regelventil"], _TEMP, "träge"),
+        "Mischlufttemperatur": _praxis_variant("Temperaturregelung", "Mischlufttemperatur [°C]", "Außen-/Umluftklappen", "Kanal- und Sensormasse", "Außenlufttemperatur", ["gekoppelte Mischluftklappen", "Einzelklappenantriebe"], ["Automatische Empfehlung", "PI", "Split-Range"], "mittel"),
+        "Frostschutz": _praxis_variant("Temperaturregelung", "Temperatur nach Heizregister [°C]", "Vorheizregister", "Registermasse", "Frost / Luftstromausfall", _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt", "Sicherheitsbegrenzung"], "schnell", "Nein"),
+    },
+    "Heizung": {
+        "witterungsgeführter Heizkreis": _praxis_variant("Temperaturregelung", "Vorlauftemperatur [°C]", "Mischer / Heizkreis", "Wasser- und Gebäudemasse", "Außentemperatur / Abnahme", _VALVE + _PUMP, ["Automatische Empfehlung", "PI", "Heizkurve + PI"], "träge"),
+        "Heizkreis-Vorlauftemperatur": _praxis_variant("Temperaturregelung", "Vorlauftemperatur [°C]", "Wärmeerzeuger / Mischer", "Wasserinhalt", "Rücklauftemperatur", _VALVE, _TEMP, "träge"),
+        "Rücklauftemperaturbegrenzung": _praxis_variant("Temperaturregelung", "Rücklauftemperatur [°C]", "Bypass / Mischer", "Wasserinhalt", "Wärmeabnahme", _VALVE, ["Automatische Empfehlung", "PI", "Begrenzungsregelung"], "träge"),
+        "Raumtemperatur": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Heizfläche / Raum", "Gebäudemasse", "Außentemperatur / Fremdwärme", _VALVE, _TEMP, "sehr träge"),
+        "Kesseltemperatur": _praxis_variant("Temperaturregelung", "Kesseltemperatur [°C]", "Brenner / Kessel", "Kesselwasser und Metall", "Wärmeabnahme", ["modulierender Brenner", "mehrstufiger Brenner", "Elektroheizung"], _TEMP, "träge"),
+        "Pufferspeicher-Ladung": _praxis_variant("Temperaturregelung", "Speichertemperatur [°C]", "Ladekreis", "Pufferspeicher", "Entnahme / Schichtung", _PUMP + _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt", "Kaskade"], "sehr träge"),
+        "Trinkwarmwasserbereitung": _praxis_variant("Temperaturregelung", "Warmwassertemperatur [°C]", "Wärmetauscher / Speicher", "Warmwasservolumen", "Zapfung / Kaltwasser", _VALVE + _PUMP, _TEMP, "träge"),
+    },
+    "Kälte": {
+        "Kaltwasser-Vorlauftemperatur": _praxis_variant("Temperaturregelung", "Kaltwasser-Vorlauf [°C]", "Kältemaschine / Verdampfer", "Wasserinhalt", "Kühllast", ["Verdichter mit FU", "Verdichterstufen", "Regelventil"], _TEMP, "träge"),
+        "Kaltwasser-Rücklauftemperatur": _praxis_variant("Temperaturregelung", "Kaltwasser-Rücklauf [°C]", "Verbrauchernetz", "Wasserinhalt", "Kühllast", _PUMP, _TEMP, "träge"),
+        "Kühlraumtemperatur": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Verdampfer / Kühlraum", "Produkt- und Gebäudemasse", "Türöffnung / Einlagerung", ["Verdichter", "Magnetventil", "elektronisches Expansionsventil"], ["Automatische Empfehlung", "PI", "Zweipunkt"], "sehr träge"),
+        "Verdampfungsdruck": _praxis_variant("Druckregelung", "Verdampfungsdruck [bar]", "Verdichter / Verdampfer", "Kältemittelfüllung", "Kühllast", ["Verdichter mit FU", "Verdichterstufen", "Saugdruckregler"], _STAGES, "schnell"),
+        "Verflüssigungsdruck": _praxis_variant("Druckregelung", "Verflüssigungsdruck [bar]", "Verflüssiger", "Kältemittelfüllung", "Außentemperatur", ["Verflüssigerlüfter mit FU", "EC-Lüfter", "Wasserventil"], _PI, "mittel"),
+        "Überhitzungsregelung": _praxis_variant("Generische Prozessstrecke", "Überhitzung [K]", "Verdampfer / Expansionsventil", "Kältemittelfüllung", "Last- und Druckänderung", ["elektronisches Expansionsventil", "thermostatisches Expansionsventil"], ["Automatische Empfehlung", "PI", "PID"], "schnell"),
+        "Kältespeicher-Ladung": _praxis_variant("Temperaturregelung", "Speichertemperatur [°C]", "Ladekreis", "Kältespeicher", "Kälteentnahme", _PUMP + _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt"], "sehr träge"),
+    },
+    "Wasser": {
+        "Behälter-Füllstand": _praxis_variant("Füllstandsregelung", "Füllstand [m]", "Zulauf / Behälter", "Behältervolumen", "Abfluss", _PUMP + _VALVE, _PI, "träge"),
+        "Druckhaltung": _praxis_variant("Druckregelung", "Netzdruck [bar]", "Pumpe / Rohrnetz", "Druckbehälter", "Verbrauch", _PUMP, _PI, "mittel"),
+        "Durchfluss": _praxis_variant("Durchflussregelung", "Wasserdurchfluss [m³/h]", "Pumpe / Ventil / Rohr", "Rohrvolumen", "Vordruck / Verbraucher", _PUMP, _PI, "schnell"),
+        "Pumpenkaskade": _praxis_variant("Druckregelung", "Netzdruck [bar]", "Mehrpumpenanlage", "Druckbehälter", "Verbrauch", ["Pumpen ohne FU", "Führungspumpe mit FU", "alle Pumpen mit FU"], _STAGES, "mittel"),
+        "Brunnen- oder Hochbehälter": _praxis_variant("Füllstandsregelung", "Wasserstand [m]", "Förderpumpe / Speicher", "Brunnen oder Hochbehälter", "Entnahme / Zulauf", _PUMP, ["Automatische Empfehlung", "PI", "Zweipunkt"], "sehr träge"),
+        "Wassertemperatur": _praxis_variant("Temperaturregelung", "Wassertemperatur [°C]", "Wärmetauscher", "Wasservolumen", "Zulauftemperatur / Durchfluss", _VALVE, _TEMP, "träge"),
+    },
+    "Abwasser": {
+        "Pumpensumpf-Füllstand": _praxis_variant("Füllstandsregelung", "Füllstand [m]", "Pumpensumpf / Pumpen", "Sumpfvolumen", "schwankender Zulauf", ["Pumpe ohne FU", "Pumpe mit FU", "Mehrpumpenkaskade"], ["Automatische Empfehlung", "Zweipunkt", "Stufen-/Kaskadensteuerung", "PI"], "träge"),
+        "Zulauf- oder Ablaufmenge": _praxis_variant("Durchflussregelung", "Durchfluss [m³/h]", "Pumpe / Gerinne", "Becken- und Rohrvolumen", "Zulaufschwankung", _PUMP, _PI, "mittel"),
+        "Sauerstoff im Belebungsbecken": _praxis_variant("Generische Prozessstrecke", "Sauerstoff [mg/l]", "Belüftung / Becken", "Beckenvolumen und Biomasse", "Schmutzfracht", ["Gebläse mit FU", "EC-Gebläse", "Belüfterventil"], ["Automatische Empfehlung", "PI", "Kaskade"], "sehr träge"),
+        "pH-Wert": _praxis_variant("Generische Prozessstrecke", "pH-Wert", "Neutralisation / Becken", "Beckenvolumen", "Zulauf-pH und Pufferkapazität", ["Dosierpumpe Säure", "Dosierpumpe Lauge", "Split-Range-Dosierung"], ["Automatische Empfehlung", "PI", "Split-Range"], "träge", "Nein"),
+        "Leitfähigkeit": _praxis_variant("Generische Prozessstrecke", "Leitfähigkeit [µS/cm]", "Dosierung / Spülung", "Beckenvolumen", "Stoffeintrag", ["Dosierpumpe", "Spülventil"], _PI, "träge"),
+        "Chemikaliendosierung": _praxis_variant("Durchflussregelung", "Dosierstrom [l/h]", "Dosierpumpe / Leitung", "Leitungsvolumen", "Gegendruck / Konzentration", ["Membrandosierpumpe", "Schlauchpumpe", "Regelventil"], _PI, "schnell"),
+    },
+    "Druckluft": {
+        "Netzdruck": _praxis_variant("Druckregelung", "Netzdruck [bar]", "Verdichter / Netz", "Druckluftbehälter", "Luftverbrauch", ["Verdichter mit FU", "Last-Leerlauf-Verdichter", "Verdichterkaskade"], _STAGES, "mittel"),
+        "Behälterdruck": _praxis_variant("Druckregelung", "Behälterdruck [bar]", "Verdichter / Behälter", "Druckbehälter", "Entnahme", ["Verdichter ohne FU", "Verdichter mit FU", "Einlassventil"], ["Automatische Empfehlung", "PI", "Zweipunkt"], "mittel"),
+        "Verdichterkaskade": _praxis_variant("Druckregelung", "Netzdruck [bar]", "Mehrverdichteranlage", "Netz- und Behältervolumen", "Verbrauch", ["Grundlast-/Spitzenlastverdichter", "alle Verdichter mit FU"], _STAGES, "mittel"),
+        "Taupunkt": _praxis_variant("Generische Prozessstrecke", "Drucktaupunkt [°C]", "Trockner", "Trocknermasse / Adsorber", "Feuchtelast", ["Kältetrockner", "Adsorptionstrockner", "Bypassventil"], ["Automatische Empfehlung", "PI", "Zweipunkt"], "sehr träge"),
+    },
+    "Elektroantrieb": {
+        "Drehzahl": _praxis_variant("Drehzahlregelung", "Drehzahl [1/min]", "Motor / Last", "Trägheitsmoment", "Lastmoment", _MOTOR, _PI, "schnell"),
+        "Position": _praxis_variant("Position / Mechanik", "Position [mm]", "Antrieb / Mechanik", "Masse / Feder", "Lastkraft / Reibung", ["Servoantrieb", "Schrittmotor", "Motor mit FU und Geber", "Linearantrieb"], ["Automatische Empfehlung", "P", "PI", "PID"], "mittel"),
+        "Drehmoment": _praxis_variant("Generische Prozessstrecke", "Drehmoment [Nm]", "Motor / Last", "mechanische Trägheit", "Lastmoment", ["Motor mit FU", "Servoantrieb", "DC-Antrieb"], ["Automatische Empfehlung", "PI", "PID"], "schnell"),
+        "Bandgeschwindigkeit": _praxis_variant("Drehzahlregelung", "Bandgeschwindigkeit [m/s]", "Motor / Getriebe / Band", "Massen und Trägheit", "Beladung / Schlupf", _MOTOR, _PI, "mittel"),
+        "Gleichlauf / Synchronisation": _praxis_variant("Drehzahlregelung", "Drehzahl- oder Positionsabweichung", "gekoppelte Antriebe", "Trägheitsmomente", "Lastunterschiede", ["mehrere Servoantriebe", "mehrere FU-Antriebe", "elektronische Königswelle"], ["Automatische Empfehlung", "PI", "PID", "Kaskade"], "schnell"),
+    },
+    "Raumautomation": {
+        "Raumtemperatur Heizen": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Heizfläche / Raum", "Gebäudemasse", "Außentemperatur / Belegung", _VALVE, _TEMP, "sehr träge"),
+        "Raumtemperatur Kühlen": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Kühldecke / Raum", "Gebäudemasse", "Außentemperatur / solare Last", _VALVE, _TEMP, "sehr träge"),
+        "Heiz-/Kühlsequenz": _praxis_variant("Temperaturregelung", "Raumtemperatur [°C]", "Heiz- und Kühlventil", "Gebäudemasse", "Wärme- und Kühllast", ["Heizventil + Kühlventil", "6-Wege-Ventil", "Fan-Coil"], ["Automatische Empfehlung", "Split-Range", "PI"], "sehr träge"),
+        "CO₂-geführte Lüftung": _praxis_variant("Generische Prozessstrecke", "CO₂ [ppm]", "Luftwechsel / Raum", "Raumluftvolumen", "Belegung", _AIR, ["Automatische Empfehlung", "PI", "Kaskade"], "sehr träge"),
+        "VAV-Volumenstrom": _praxis_variant("Durchflussregelung", "Volumenstrom [m³/h]", "VAV-Box / Kanal", "Kanalvolumen", "Kanaldruck", ["VAV-Klappe", "EC-Ventilator"], _PI, "schnell"),
+        "Raumfeuchte": _praxis_variant("Generische Prozessstrecke", "relative Feuchte [% r. F.]", "Befeuchter / Entfeuchter", "Raum- und Materialfeuchte", "Personen / Außenluft", ["Raumbefeuchter", "Kühlventil", "Luftmengensteller"], _TEMP, "träge"),
+    },
+    "Dampf": {
+        "Dampfdruck": _praxis_variant("Druckregelung", "Dampfdruck [bar]", "Dampferzeuger", "Kessel- und Dampfvolumen", "Dampfentnahme", ["modulierender Brenner", "Elektroheizung", "Druckregelventil"], _TEMP, "träge"),
+        "Dampftemperatur": _praxis_variant("Temperaturregelung", "Dampftemperatur [°C]", "Überhitzer / Einspritzung", "Rohr- und Metallmasse", "Dampfmenge", ["Einspritzventil", "Brennerleistung"], _TEMP, "träge"),
+        "Kesselwasserstand": _praxis_variant("Füllstandsregelung", "Kesselwasserstand", "Speisewasser / Trommel", "Trommelvolumen", "Dampfentnahme", ["Speisewasserventil", "Speisewasserpumpe mit FU"], ["Automatische Empfehlung", "PI", "Kaskade", "Dreipunktregelung"], "mittel"),
+        "Kondensatstand": _praxis_variant("Füllstandsregelung", "Kondensatstand", "Kondensatbehälter", "Behältervolumen", "Kondensatanfall", _PUMP + _VALVE, ["Automatische Empfehlung", "PI", "Zweipunkt"], "träge"),
+    },
+    "Prozesswärme": {
+        "Ofentemperatur": _praxis_variant("Temperaturregelung", "Ofentemperatur [°C]", "Brenner / Heizelement", "Ofen- und Produktmasse", "Beschickung / Türöffnung", ["modulierender Brenner", "Thyristorsteller", "Schützstufen"], _TEMP, "sehr träge"),
+        "Zonentemperatur": _praxis_variant("Temperaturregelung", "Zonentemperatur [°C]", "Heizzone", "Zonen- und Produktmasse", "Nachbarzonen / Produkt", ["Thyristorsteller", "Heizregister", "Brennerzone"], ["Automatische Empfehlung", "PI", "PID", "Kaskade"], "träge"),
+        "Wärmeträgertemperatur": _praxis_variant("Temperaturregelung", "Wärmeträgertemperatur [°C]", "Erhitzer / Kreislauf", "Fluid- und Anlagenmasse", "Prozessabnahme", _VALVE + _PUMP, _TEMP, "träge"),
+        "Kaskade Produkt/Medium": _praxis_variant("Temperaturregelung", "Produkttemperatur [°C]", "Medium und Produkt", "Produktmasse", "Durchsatz / Eintrittstemperatur", _VALVE, ["Automatische Empfehlung", "Kaskade", "PI", "PID"], "sehr träge"),
+    },
+    "Dosierung / Chemie": {
+        "pH-Wert": _praxis_variant("Generische Prozessstrecke", "pH-Wert", "Reaktor / Neutralisation", "Reaktorvolumen", "Zulauf-pH / Pufferkapazität", ["Säure-Dosierpumpe", "Lauge-Dosierpumpe", "Split-Range-Dosierung"], ["Automatische Empfehlung", "PI", "Split-Range"], "träge"),
+        "Leitfähigkeit": _praxis_variant("Generische Prozessstrecke", "Leitfähigkeit [µS/cm]", "Dosierung / Spülung", "Prozessvolumen", "Salz- oder Chemikalieneintrag", ["Dosierpumpe", "Spülventil"], _PI, "träge"),
+        "Konzentration": _praxis_variant("Generische Prozessstrecke", "Konzentration [%]", "Mischer / Reaktor", "Reaktorvolumen", "Zulaufkonzentration", ["Dosierpumpe", "Regelventil", "Mischventil"], _PI, "träge"),
+        "Mischungsverhältnis": _praxis_variant("Durchflussregelung", "Mischungsverhältnis", "zwei Stoffströme / Mischer", "Mischvolumen", "Vordruck / Stoffeigenschaften", ["zwei Regelventile", "zwei Dosierpumpen"], ["Automatische Empfehlung", "Verhältnisregelung", "Kaskade", "PI"], "mittel"),
+        "Dosiermenge": _praxis_variant("Durchflussregelung", "Dosierstrom [l/h]", "Dosierpumpe", "Leitungsvolumen", "Gegendruck", ["Membrandosierpumpe", "Schlauchpumpe", "Schneckenförderer"], _PI, "schnell"),
+    },
+    "Hydraulik / Pneumatik": {
+        "Systemdruck": _praxis_variant("Druckregelung", "Druck [bar]", "Pumpe / Kompressor / Ventil", "Speicher und Leitungsvolumen", "Last / Leckage", ["Pumpe mit FU", "Proportionalventil", "Druckregelventil"], _PI, "schnell"),
+        "Zylinderposition": _praxis_variant("Position / Mechanik", "Position [mm]", "Zylinder / Last", "Masse und Fluidkompressibilität", "Lastkraft / Reibung", ["Proportionalventil", "Servoventil", "Pneumatikventil"], ["Automatische Empfehlung", "P", "PI", "PID"], "schnell"),
+        "Kraft": _praxis_variant("Generische Prozessstrecke", "Kraft [N]", "Zylinder / Werkzeug", "mechanische Nachgiebigkeit", "Gegenkraft", ["Proportional-Druckventil", "Servoventil"], ["Automatische Empfehlung", "PI", "PID"], "schnell"),
+        "Geschwindigkeit": _praxis_variant("Durchflussregelung", "Geschwindigkeit [mm/s]", "Ventil / Zylinder", "bewegte Masse", "Last / Reibung", ["Proportionalventil", "Stromregelventil", "Servoventil"], _PI, "schnell"),
+    },
+    "Energie": {
+        "Leistungsbegrenzung": _praxis_variant("Generische Prozessstrecke", "Bezugsleistung [kW]", "Verbraucher / Leistungssteller", "thermische und elektrische Flexibilität", "Lastsprünge", ["Leistungssollwert", "Lastabwurf", "Batteriewechselrichter"], ["Automatische Empfehlung", "PI", "Prioritätssteuerung"], "mittel"),
+        "Eigenverbrauchsoptimierung": _praxis_variant("Generische Prozessstrecke", "Netzleistung [kW]", "PV / Speicher / Verbraucher", "Batteriespeicher", "PV-Erzeugung / Verbrauch", ["Batteriewechselrichter", "steuerbare Verbraucher", "Wärmepumpe"], ["Automatische Empfehlung", "PI", "Energiemanagement"], "mittel"),
+        "Speicherladung": _praxis_variant("Generische Prozessstrecke", "Ladezustand [%]", "Batterie / Ladegerät", "Batteriekapazität", "Verbrauch / Erzeugung", ["Batteriewechselrichter", "Ladegerät"], ["Automatische Empfehlung", "Leistungsregelung", "Energiemanagement"], "sehr träge"),
+        "Lastmanagement": _praxis_variant("Generische Prozessstrecke", "Gesamtleistung [kW]", "Verbrauchergruppen", "verschiebbare Lasten", "Produktions- und Belegungsplan", ["Lastfreigaben", "Sollwertvorgaben", "Lastabwurf"], ["Automatische Empfehlung", "Prioritätssteuerung", "Energiemanagement"], "mittel"),
+    },
+}
+
+
 # ------------------------------------------------------------
 # Seiteneinstellungen
 # ------------------------------------------------------------
@@ -375,6 +504,10 @@ if "builder_last_validation" not in st.session_state:
 
 if "wirkplan_config" not in st.session_state:
     st.session_state.wirkplan_config = {
+        "anlagenart": "RLT / Lüftung",
+        "regelungsvariante": "Zulufttemperatur",
+        "stellglied_typ": "2-Wege-Regelventil",
+        "regelstrategie": "Automatische Empfehlung",
         "prozessart": "Temperaturregelung",
         "stellgroesse": "Heizleistung P [W]",
         "prozessglied": "thermische Strecke / Raum",
@@ -465,6 +598,15 @@ if "wirkplan_config" not in st.session_state:
         "pos_stellkraft_n": 1500.0,
         "pos_hub_mm": 500.0,
         "pos_soll_mm": 250.0,
+        # Generische Strecke für Prozess-, Chemie- und Energieregelungen
+        "generic_plant_type": "PT1",
+        "generic_ks": 1.0,
+        "generic_ts": 10.0,
+        "generic_zeta": 0.7,
+        "generic_omega0": 1.0,
+        "generic_setpoint": 1.0,
+        "generic_unit": "Prozesseinheit",
+        "generic_t_end": 60.0,
     }
 
 
@@ -2092,6 +2234,10 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
 def ensure_real_process_defaults(config: dict):
     """Ergänzt neue Felder auch in bereits laufenden Streamlit-Sitzungen."""
     defaults = {
+        "anlagenart": "RLT / Lüftung",
+        "regelungsvariante": "Zulufttemperatur",
+        "stellglied_typ": "2-Wege-Regelventil",
+        "regelstrategie": "Automatische Empfehlung",
         "reale_daten_aktiv": True,
         "eingabetiefe": "Einfach",
         "temp_medium": "Wasser",
@@ -2138,6 +2284,14 @@ def ensure_real_process_defaults(config: dict):
         "pos_stellkraft_n": 1500.0,
         "pos_hub_mm": 500.0,
         "pos_soll_mm": 250.0,
+        "generic_plant_type": "PT1",
+        "generic_ks": 1.0,
+        "generic_ts": 10.0,
+        "generic_zeta": 0.7,
+        "generic_omega0": 1.0,
+        "generic_setpoint": 1.0,
+        "generic_unit": "Prozesseinheit",
+        "generic_t_end": 60.0,
         "sensor": "Temperaturfühler",
         "messglied": "Messumformer",
         "stellglied": "Leistungssteller / Heizung",
@@ -2196,7 +2350,8 @@ def calculate_real_process_data(config: dict):
         "active": bool(config.get("reale_daten_aktiv", True)),
         "supported": prozessart in {
             "Temperaturregelung", "Drehzahlregelung", "Füllstandsregelung",
-            "Druckregelung", "Durchflussregelung", "Position / Mechanik"
+            "Druckregelung", "Durchflussregelung", "Position / Mechanik",
+            "Generische Prozessstrecke"
         },
         "metrics": [],
         "warnings": [],
@@ -2495,6 +2650,40 @@ def calculate_real_process_data(config: dict):
         }
         result["begruendung"].append("Masse, Federsteifigkeit und Dämpfung bestimmen Eigenfrequenz und Dämpfungsgrad des PT2-Modells.")
 
+    elif prozessart == "Generische Prozessstrecke":
+        plant_type = config.get("generic_plant_type", "PT1")
+        ks = max(float(config.get("generic_ks", 1.0)), 0.000001)
+        ts = max(float(config.get("generic_ts", 10.0)), 0.000001)
+        zeta = max(float(config.get("generic_zeta", 0.7)), 0.01)
+        omega0 = max(float(config.get("generic_omega0", 1.0)), 0.000001)
+        setpoint = float(config.get("generic_setpoint", 1.0))
+        unit = config.get("generic_unit", "Prozesseinheit")
+        t_end = max(float(config.get("generic_t_end", 60.0)), 0.1)
+        result.update({
+            "plant_type": plant_type, "ks": ks, "ts": ts,
+            "zeta": zeta, "omega0": omega0, "setpoint": setpoint,
+            "t_end": t_end, "disturbance_value": -0.1 * setpoint,
+            "input_unit": "% Stellgröße", "output_unit": unit,
+            "model_note": (
+                "Diese praxisnahe Variante nutzt eine frei parametrierbare Ersatzstrecke. "
+                "Ks, Ts und bei PT2 zusätzlich ζ und ω0 können an Messdaten angepasst werden."
+            ),
+        })
+        result["metrics"] = [
+            ("Streckentyp", plant_type), ("Streckenverstärkung Ks", f"{ks:.4g}"),
+            ("Zeitkonstante Ts", f"{ts:.3f} s"), ("Sollwert", f"{setpoint:.4g} {unit}"),
+            ("Dämpfung ζ", f"{zeta:.3f}"), ("Eigenkreisfrequenz ω0", f"{omega0:.3f} rad/s"),
+        ]
+        result["node_details"] = {
+            "stellgroesse": config.get("stellglied_typ", "Stellglied"),
+            "prozessglied": config.get("regelungsvariante", "Prozess"),
+            "speicher": config.get("speicher", "Prozessspeicher"),
+            "regelgroesse": f"Soll {setpoint:.4g} {unit}",
+        }
+        result["begruendung"].append(
+            "Für diese Spezialanwendung wird ein transparentes, frei parametrierbares Ersatzmodell verwendet."
+        )
+
     if "ks" in result:
         # Einfache, robuste IMC-nahe Startauslegung für ein PT1-Modell ohne Totzeit.
         result["kp"] = _clamp(2.0 / max(result["ks"], 0.001), 0.001, 100.0)
@@ -2715,6 +2904,36 @@ def derive_controller_from_wirkplan(config: dict):
             "Die automatisch abgeleitete Auslegung wurde durch die manuellen Expertenwerte ersetzt."
         )
 
+    selected_strategy = config.get("regelstrategie", "Automatische Empfehlung")
+    result["regelstrategie"] = selected_strategy
+    result["simulation_equivalent"] = result["controller_type"]
+    if config.get("auslegung") != "Manuell" and selected_strategy != "Automatische Empfehlung":
+        strategy_equivalents = {
+            "P": "P", "PI": "PI", "PID": "PID", "Zweipunkt": "P",
+            "Kaskade": "PI", "Split-Range": "PI", "Stufen-/Kaskadensteuerung": "PI",
+            "Sicherheitsbegrenzung": "P", "Heizkurve + PI": "PI",
+            "Begrenzungsregelung": "PI", "Dreipunktregelung": "PI",
+            "Verhältnisregelung": "PI", "Prioritätssteuerung": "PI",
+            "Energiemanagement": "PI", "Leistungsregelung": "PI",
+        }
+        equivalent = strategy_equivalents.get(selected_strategy, "PI")
+        result["controller_type"] = equivalent
+        result["simulation_equivalent"] = equivalent
+        if equivalent == "P":
+            result["ki"] = 0.0
+            result["kd"] = 0.0
+        elif equivalent == "PI":
+            result["ki"] = max(float(result["ki"]), 0.001)
+            result["kd"] = 0.0
+        else:
+            result["ki"] = max(float(result["ki"]), 0.001)
+            result["kd"] = max(float(result["kd"]), 0.001)
+        if selected_strategy not in {"P", "PI", "PID"}:
+            result["begruendung"].append(
+                f"Die Praxisstrategie „{selected_strategy}“ wird im vorhandenen Ein-Kreis-Simulator "
+                f"durch einen {equivalent}-Regler angenähert; der Wirkplan behält die Fachbezeichnung."
+            )
+
     result["kp"] = round(float(result["kp"]), 3)
     result["ki"] = round(float(result["ki"]), 8)
     result["kd"] = round(float(result["kd"]), 3)
@@ -2752,7 +2971,7 @@ def build_wirkplan_flow(config: dict):
         ),
         StreamlitFlowNode(
             id="regler", pos=(500, 180),
-            data={"content": f"Regler<br><b>{derived['controller_type']}</b><br>Kp={derived['kp']}, Ki={derived['ki']}, Kd={derived['kd']}"},
+            data={"content": f"Regelstrategie<br><b>{config.get('regelstrategie', derived['controller_type'])}</b><br>Simulation: {derived['controller_type']}<br>Kp={derived['kp']}, Ki={derived['ki']}, Kd={derived['kd']}"},
             node_type="default", source_position="right", target_position="left", draggable=True
         ),
         StreamlitFlowNode(
@@ -2966,6 +3185,90 @@ def update_wirkplan_defaults_for_process(config: dict):
     return config
 
 
+def apply_practical_variant_defaults(config: dict):
+    """Übernimmt Fachpreset, Stellgliedauswahl und Grundmodell in den Wirkplan."""
+    category = config.get("anlagenart", "RLT / Lüftung")
+    variants = PRACTICAL_PROCESS_CATALOG[category]
+    variant_name = config.get("regelungsvariante")
+    if variant_name not in variants:
+        variant_name = next(iter(variants))
+        config["regelungsvariante"] = variant_name
+
+    profile = variants[variant_name]
+    config["prozessart"] = profile["model"]
+    config = update_wirkplan_defaults_for_process(config)
+
+    actuator = config.get("stellglied_typ")
+    if actuator not in profile["actuators"]:
+        actuator = profile["actuators"][0]
+    strategy = config.get("regelstrategie")
+    if strategy not in profile["strategies"]:
+        strategy = profile["strategies"][0]
+
+    config.update({
+        "stellglied_typ": actuator,
+        "regelstrategie": strategy,
+        "stellglied": actuator,
+        "stellgroesse": f"Stellsignal an {actuator}",
+        "prozessglied": profile["process"],
+        "speicher": profile["storage"],
+        "regelgroesse": profile["controlled"],
+        "stoergroesse": profile["disturbance"],
+        "sensor": f"Sensor für {profile['controlled'].split(' [')[0]}",
+        "messglied": "Messumformer / Automationsstation",
+        "traegheit": profile["inertia"],
+        "ueberschwingen_zulaessig": profile["overshoot"],
+        "bleibende_abweichung_erlaubt": profile["offset"],
+        "stoerungen_relevant": profile["disturbances"],
+    })
+
+    controlled = profile["controlled"]
+    if profile["model"] == "Generische Prozessstrecke":
+        generic_defaults = {
+            "CO₂": (1000.0, "ppm", 300.0),
+            "pH": (7.0, "pH", 120.0),
+            "Sauerstoff": (2.0, "mg/l", 300.0),
+            "Feuchte": (50.0, "% r. F.", 300.0),
+            "Leitfähigkeit": (500.0, "µS/cm", 300.0),
+            "Konzentration": (50.0, "%", 300.0),
+            "Ladezustand": (80.0, "%", 3600.0),
+            "Leistung": (100.0, "kW", 300.0),
+            "Netzleistung": (0.0, "kW", 300.0),
+            "Taupunkt": (-20.0, "°C", 600.0),
+        }
+        setpoint, unit, t_end = 1.0, "Prozesseinheit", 60.0
+        for token, values in generic_defaults.items():
+            if token in controlled:
+                setpoint, unit, t_end = values
+                break
+        config.update({
+            "generic_setpoint": setpoint,
+            "generic_unit": unit,
+            "generic_t_end": t_end,
+            "generic_ts": max(t_end / 6.0, 0.1),
+        })
+
+    widget_values = {
+        "wirkplan_stellglied": config["stellglied"],
+        "wirkplan_stellgroesse": config["stellgroesse"],
+        "wirkplan_prozessglied": config["prozessglied"],
+        "wirkplan_speicher": config["speicher"],
+        "wirkplan_regelgroesse": config["regelgroesse"],
+        "wirkplan_stoergroesse": config["stoergroesse"],
+        "wirkplan_sensor": config["sensor"],
+        "wirkplan_messglied": config["messglied"],
+        "wirkplan_traegheit": config["traegheit"],
+        "wirkplan_ueberschwingen": config["ueberschwingen_zulaessig"],
+        "wirkplan_abweichung": config["bleibende_abweichung_erlaubt"],
+        "wirkplan_stoerungen": config["stoerungen_relevant"],
+    }
+    # Alte Widgetzustände entfernen, damit die neuen Fachpresets beim Rerun
+    # als eindeutige Defaults erscheinen und nicht von alten Eingaben überlagert werden.
+    for key in widget_values:
+        st.session_state.pop(key, None)
+    return config
+
+
 def render_real_process_inputs(config: dict):
     """Zeigt nur die zur Prozessart und Eingabetiefe passenden realen Anlagendaten."""
     config["reale_daten_aktiv"] = st.checkbox(
@@ -3129,6 +3432,24 @@ def render_real_process_inputs(config: dict):
             number("pos_feder_n_m", "Federsteifigkeit [N/m]", 0.001, 100.0)
             number("pos_daempfung_ns_m", "Dämpfung [N·s/m]", 0.0, 10.0)
 
+    elif prozessart == "Generische Prozessstrecke":
+        config["generic_plant_type"] = st.selectbox(
+            "Ersatzmodell", ["PT1", "PT2"],
+            index=["PT1", "PT2"].index(config.get("generic_plant_type", "PT1")),
+            key="wirkplan_generic_plant_type",
+        )
+        number("generic_ks", "Streckenverstärkung Ks", 0.000001, 0.1, fmt="%.6f")
+        number("generic_ts", "Zeitkonstante Ts [s]", 0.000001, 0.5, fmt="%.6f")
+        number("generic_setpoint", "Sollwert", -1000000.0, 0.1)
+        config["generic_unit"] = st.text_input(
+            "Einheit der Regelgröße", value=config.get("generic_unit", "Prozesseinheit"),
+            key="wirkplan_generic_unit",
+        )
+        number("generic_t_end", "Simulationsdauer [s]", 0.1, 1.0)
+        if config["generic_plant_type"] == "PT2":
+            number("generic_zeta", "Dämpfungsgrad ζ", 0.01, 0.05)
+            number("generic_omega0", "Eigenkreisfrequenz ω0 [rad/s]", 0.000001, 0.1)
+
     return config
 
 
@@ -3147,71 +3468,83 @@ def render_wirkplan_builder():
     with col_left:
         st.subheader("Physikalische Angaben")
 
-        alte_prozessart = config["prozessart"]
-
-        config["prozessart"] = st.selectbox(
-            "Prozessart",
-            [
-                "Temperaturregelung",
-                "Drehzahlregelung",
-                "Füllstandsregelung",
-                "Druckregelung",
-                "Durchflussregelung",
-                "Position / Mechanik"
-            ],
-            index=[
-                "Temperaturregelung",
-                "Drehzahlregelung",
-                "Füllstandsregelung",
-                "Druckregelung",
-                "Durchflussregelung",
-                "Position / Mechanik"
-            ].index(config["prozessart"]),
-            key="wirkplan_prozessart"
+        st.markdown("#### Praxisauswahl")
+        old_category = config.get("anlagenart", "RLT / Lüftung")
+        categories = list(PRACTICAL_PROCESS_CATALOG)
+        if old_category not in categories:
+            old_category = categories[0]
+        config["anlagenart"] = st.selectbox(
+            "1. Anlagenart / Gewerk", categories, index=categories.index(old_category),
+            key="wirkplan_anlagenart",
         )
 
-        if config["prozessart"] != alte_prozessart:
-            config = update_wirkplan_defaults_for_process(config)
+        variants = PRACTICAL_PROCESS_CATALOG[config["anlagenart"]]
+        variant_names = list(variants)
+        old_variant = config.get("regelungsvariante")
+        category_changed = config["anlagenart"] != old_category
+        if category_changed or old_variant not in variant_names:
+            old_variant = variant_names[0]
+            st.session_state.pop("wirkplan_regelungsvariante", None)
+        config["regelungsvariante"] = st.selectbox(
+            "2. Regelungsvariante", variant_names, index=variant_names.index(old_variant),
+            key="wirkplan_regelungsvariante",
+        )
+
+        profile = variants[config["regelungsvariante"]]
+        actuator_options = profile["actuators"]
+        old_actuator = config.get("stellglied_typ")
+        if old_actuator not in actuator_options:
+            old_actuator = actuator_options[0]
+        config["stellglied_typ"] = st.selectbox(
+            "3. Stellglied / Antrieb", actuator_options,
+            index=actuator_options.index(old_actuator), key="wirkplan_stellglied_typ",
+        )
+
+        strategy_options = profile["strategies"]
+        old_strategy = config.get("regelstrategie")
+        if old_strategy not in strategy_options:
+            old_strategy = strategy_options[0]
+        config["regelstrategie"] = st.selectbox(
+            "4. Regelstrategie", strategy_options,
+            index=strategy_options.index(old_strategy), key="wirkplan_regelstrategie",
+        )
+
+        selection_changed = (
+            category_changed
+            or config["regelungsvariante"] != st.session_state.get("wirkplan_last_variant")
+        )
+        if selection_changed:
+            config = apply_practical_variant_defaults(config)
+            st.session_state["wirkplan_last_variant"] = config["regelungsvariante"]
             st.session_state.wirkplan_config = config
             st.rerun()
 
+        config["prozessart"] = profile["model"]
+        if config["stellglied_typ"] != st.session_state.get("wirkplan_last_actuator"):
+            config["stellglied"] = config["stellglied_typ"]
+            config["stellgroesse"] = f"Stellsignal an {config['stellglied_typ']}"
+            st.session_state["wirkplan_stellglied"] = config["stellglied"]
+            st.session_state["wirkplan_stellgroesse"] = config["stellgroesse"]
+            st.session_state["wirkplan_last_actuator"] = config["stellglied_typ"]
+        st.caption(
+            f"Grundmodell: **{config['prozessart']}** · "
+            f"{len(variant_names)} Varianten in diesem Gewerk"
+        )
+
+        def config_text_input(label, field, widget_key):
+            if widget_key not in st.session_state:
+                st.session_state[widget_key] = str(config.get(field, ""))
+            config[field] = st.text_input(label, key=widget_key)
+
         with st.expander("1. Physikalische Wirkungskette", expanded=True):
-            config["stellgroesse"] = st.text_input(
-                "Stellgröße",
-                value=config["stellgroesse"],
-                key="wirkplan_stellgroesse"
-            )
-
-            config["prozessglied"] = st.text_input(
-                "Prozessglied",
-                value=config["prozessglied"],
-                key="wirkplan_prozessglied"
-            )
-
-            config["speicher"] = st.text_input(
-                "Speicher / Trägheit",
-                value=config["speicher"],
-                key="wirkplan_speicher"
-            )
-
-            config["regelgroesse"] = st.text_input(
-                "Regelgröße",
-                value=config["regelgroesse"],
-                key="wirkplan_regelgroesse"
-            )
-
-            config["stellglied"] = st.text_input(
-                "Stellglied", value=config["stellglied"], key="wirkplan_stellglied"
-            )
-            config["sensor"] = st.text_input(
-                "Sensor", value=config["sensor"], key="wirkplan_sensor"
-            )
-            config["messglied"] = st.text_input(
-                "Messumformer / Messglied", value=config["messglied"], key="wirkplan_messglied"
-            )
-            config["sollwertgeber"] = st.text_input(
-                "Sollwertgeber", value=config["sollwertgeber"], key="wirkplan_sollwertgeber"
-            )
+            config_text_input("Stellgröße", "stellgroesse", "wirkplan_stellgroesse")
+            config_text_input("Prozessglied", "prozessglied", "wirkplan_prozessglied")
+            config_text_input("Speicher / Trägheit", "speicher", "wirkplan_speicher")
+            config_text_input("Regelgröße", "regelgroesse", "wirkplan_regelgroesse")
+            config_text_input("Stellglied", "stellglied", "wirkplan_stellglied")
+            config_text_input("Sensor", "sensor", "wirkplan_sensor")
+            config_text_input("Messumformer / Messglied", "messglied", "wirkplan_messglied")
+            config_text_input("Sollwertgeber", "sollwertgeber", "wirkplan_sollwertgeber")
 
         with st.expander("2. Reale Anlagendaten", expanded=True):
             config = render_real_process_inputs(config)
@@ -3354,7 +3687,8 @@ def render_wirkplan_builder():
         st.subheader("Abgeleiteter Regler")
 
         st.write(f"**Empfohlene Strecke:** {derived['plant_type']}")
-        st.write(f"**Empfohlener Regler:** {derived['controller_type']}")
+        st.write(f"**Praxisstrategie:** {config['regelstrategie']}")
+        st.write(f"**Simulationsregler:** {derived['controller_type']}")
 
         st.write("**Startparameter:**")
         st.write(f"- Kp = {derived['kp']}")
@@ -3407,6 +3741,10 @@ def render_wirkplan_builder():
 
     with col_right:
         st.subheader("Grafischer Wirkplan")
+        st.caption(
+            f"{config['anlagenart']} › {config['regelungsvariante']} › "
+            f"{config['stellglied_typ']}"
+        )
 
         flow_state = build_wirkplan_flow(config)
 
@@ -3448,6 +3786,23 @@ def render_wirkplan_builder():
 
         with st.expander("Abgeleitete Simulationsdaten"):
             st.json(derived)
+
+        with st.expander("Verfügbarer Praxiskatalog"):
+            catalog_rows = []
+            for category, variants in PRACTICAL_PROCESS_CATALOG.items():
+                for variant_name, variant_profile in variants.items():
+                    catalog_rows.append({
+                        "Anlagenart": category,
+                        "Regelungsvariante": variant_name,
+                        "Grundmodell": variant_profile["model"],
+                        "Stellglieder": ", ".join(variant_profile["actuators"]),
+                        "Regelstrategien": ", ".join(variant_profile["strategies"]),
+                    })
+            st.dataframe(pd.DataFrame(catalog_rows), width="stretch", hide_index=True)
+            st.caption(
+                f"{len(PRACTICAL_PROCESS_CATALOG)} Anlagenarten mit "
+                f"{len(catalog_rows)} Regelungsvarianten."
+            )
 
 
 # ------------------------------------------------------------
